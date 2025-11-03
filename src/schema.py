@@ -4,7 +4,6 @@ Schema registry for bigquery-public-data.thelook_ecommerce.
 This module centralizes table metadata (PKs, FKs, join paths, date columns)
 so downstream nodes (planner/sqlgen) can reason about allowed columns and
 compose *safe* SQL without free-form introspection.
-
 """
 
 from __future__ import annotations
@@ -31,11 +30,16 @@ TABLES: Dict[str, Table] = {
         fqtn=f"{DATASET}.orders",
         pk="order_id",
         columns={
-            "order_id", "user_id", "status",
-            "created_at", "delivered_at", "returned_at",
-            "num_of_item", "order_total",
+            "order_id",
+            "user_id",
+            "status",    # real column name in the dataset
+            "created_at",
+            "shipped_at",
+            "delivered_at",
+            "returned_at",
+            "num_of_item",
         },
-        date_cols=("created_at", "delivered_at", "returned_at"),
+        date_cols=("created_at", "delivered_at", "returned_at", "shipped_at"),
         default_date_col="created_at",
     ),
     "order_items": Table(
@@ -43,8 +47,16 @@ TABLES: Dict[str, Table] = {
         fqtn=f"{DATASET}.order_items",
         pk="id",  # order_items has an id column; joins use order_id/product_id
         columns={
-            "id", "order_id", "product_id", "status",
-            "created_at", "shipped_at", "delivered_at", "returned_at",
+            "id",
+            "order_id",
+            "user_id",
+            "product_id",
+            "inventory_item_id",
+            "status",
+            "created_at",
+            "shipped_at",
+            "delivered_at",
+            "returned_at",
             "sale_price",
         },
         date_cols=("created_at", "shipped_at", "delivered_at", "returned_at"),
@@ -55,10 +67,18 @@ TABLES: Dict[str, Table] = {
         fqtn=f"{DATASET}.products",
         pk="id",
         columns={
-            "id", "product_name", "brand", "department", "category",
-            "cost", "retail_price",
+            "id",
+            "name",             # real column — NOT product_name
+            "brand",
+            "department",
+            "category",
+            "cost",
+            "retail_price",
+            "sku",
+            "distribution_center_id",
         },
-        date_cols=(),  # static catalog table (no time filtering by default)
+        # static catalog table
+        date_cols=(),
         default_date_col="",  # not applicable
     ),
     "users": Table(
@@ -66,8 +86,18 @@ TABLES: Dict[str, Table] = {
         fqtn=f"{DATASET}.users",
         pk="id",
         columns={
-            "id", "first_name", "last_name", "age", "gender",
-            "state", "city", "country", "created_at",
+            "id",
+            "first_name",
+            "last_name",
+            "email",
+            "age",
+            "gender",
+            "state",
+            "city",
+            "country",
+            "street_address",
+            "postal_code",
+            "created_at",
         },
         date_cols=("created_at",),
         default_date_col="created_at",
@@ -77,8 +107,11 @@ TABLES: Dict[str, Table] = {
 # ---- Canonical join paths (whitelisted only) ----
 # Each tuple is: (left_table, right_table, left_key, right_key)
 JOINS: List[Tuple[str, str, str, str]] = [
+    # orders → users
     ("orders", "users", "user_id", "id"),
+    # order_items → orders
     ("order_items", "orders", "order_id", "order_id"),
+    # order_items → products
     ("order_items", "products", "product_id", "id"),
 ]
 
@@ -91,15 +124,13 @@ COMMON_DIMENSIONS: Dict[str, str] = {
     "state": "users.state",
     "city": "users.city",
     "age": "users.age",
+
     # products
     "brand": "products.brand",
     "department": "products.department",
     "category": "products.category",
-    "product_name": "products.product_name",
-    "department": "products.department",
-
+    "product_name": "products.name",  # <-- fixed to real column
 }
-
 
 # ------------------------ Helpers ------------------------ #
 def get_table(name: str) -> Table:

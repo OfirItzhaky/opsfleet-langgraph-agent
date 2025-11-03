@@ -11,7 +11,7 @@ def test_tables_exist_and_pks():
 
 def test_core_columns_present():
     assert schema.has_column("orders", "order_id")
-    assert schema.has_column("orders", "order_total")
+    assert schema.has_column("orders", "status")          # <- replaced order_total
     assert schema.has_column("order_items", "sale_price")
     assert schema.has_column("products", "brand")
     assert schema.has_column("users", "country")
