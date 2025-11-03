@@ -1,0 +1,16 @@
+# virtual environment
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+.ipynb_checkpoints/
+
+# IDE / cache folders
+.idea/
+.vscode/
+.cache/
+
+# local configs and outputs
+.env
+charts/
