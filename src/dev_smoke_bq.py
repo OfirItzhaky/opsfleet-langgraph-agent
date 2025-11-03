@@ -1,17 +1,18 @@
 """
 Smoke test for BQ helper + SQL templates.
 
-Run:
-  python -m src.dev_smoke_bq
 """
 
 import logging
-from .clients.bq_helper import BQHelper
-from . import sql_templates as st
+
+from src.clients.bq_helper import BQHelper
+from src import sql_templates as st
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
+
 def main():
+    """Run simple queries against thelook_ecommerce to verify BQ wiring."""
     bq = BQHelper()  # uses default ADC creds and public dataset
 
     # 1) Segments
@@ -41,6 +42,7 @@ def main():
     print("Dry-run bytes:", f"{bq.dry_run(sql4):,}")
     df4 = bq.execute_safe(sql4, preview_limit=10)
     print(df4.head())
+
 
 if __name__ == "__main__":
     main()

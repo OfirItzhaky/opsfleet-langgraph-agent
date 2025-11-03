@@ -11,6 +11,7 @@ from typing import Optional, Iterator
 import pandas as pd
 from google.cloud import bigquery
 from google.api_core import exceptions as gex
+import os
 
 from .bq_client import BigQueryRunner
 
@@ -32,7 +33,11 @@ class BQHelper:
         self.max_bytes_scanned = int(max_bytes_scanned)
         self.preview_limit = int(preview_limit)
         self._dataset_id = dataset_id
-
+        project_id = (
+                project_id
+                or os.getenv("GOOGLE_CLOUD_PROJECT")
+                or "opsfleet-langgraph-agent"  # fallback for reviewers
+        )
         if client is not None:
             # Direct client injection (tests)
             self.client = client
