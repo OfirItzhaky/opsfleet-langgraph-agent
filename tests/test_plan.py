@@ -1,6 +1,10 @@
 
 import src.nodes.plan as plan_mod
-
+import types
+from langchain_core.messages import AIMessage
+import src.nodes.plan as plan_mod
+from src.state import AgentState
+from src.nodes.plan import plan_node, DEFAULT_START, DEFAULT_END
 def test_plan_for_segment():
     s = AgentState(user_query="segment customers", intent="segment")
     out = plan_node(s)
@@ -106,44 +110,63 @@ def test_plan_preserves_existing_params():
 
 
 def test_plan_llm_refine_for_long_query(monkeypatch):
-    s = AgentState(
-        user_query="show me sales by country for the last 180 days but focus on top products only and limit to 10 rows",
+    # long query → should trigger refine
+    state = AgentState(
+        user_query=(
+            "show me sales by country for the last 180 days but focus on top "
+            "products only and limit to 10 rows please this is long"
+        ),
         intent="geo",
     )
 
-    class DummyResp:
-        text = (
-            '{'
-            '"template_id": "q_geo_sales",'
-            '"params": {'
-            '"level": "country",'
-            '"limit": 10,'
-            '"start_date": "DATE_SUB(CURRENT_DATE(), INTERVAL 180 DAY)",'
-            '"end_date": "CURRENT_DATE()"'
-            '}'
-            '}'
-        )
-
-    class DummyClient:
-        class models:
-            @staticmethod
-            def generate_content(model=None, contents=None):
-                return DummyResp()
-
-    # make sure refine branch doesn't early-exit
-    monkeypatch.setenv("GEMINI_API_KEY", "fake")
-    monkeypatch.setattr(plan_mod, "GEMINI_API_KEY", "fake")
-    # now plan_mod has a genai attribute we can patch
+    # make the prompt loader return a fixed template (avoid filesystem)
     monkeypatch.setattr(
-        plan_mod,
-        "genai",
-        types.SimpleNamespace(Client=lambda api_key: DummyClient()),
+        plan_mod.Path,
+        "read_text",
+        lambda self, encoding="utf-8": (
+            "You may ONLY use these template ids: q_customer_segments, q_top_products, "
+            "q_geo_sales, q_sales_trend.\n"
+            "User question: {{user_query}}\n"
+            "Current template_id: {{template_id}}\n"
+            "Current params: {{params}}\n"
+        ),
     )
 
-    # IMPORTANT: call the function from the patched module
-    out = plan_mod.plan_node(s)
+    # fake LLM that returns the refined plan
+    class FakeLLM:
+        def __init__(self, model, google_api_key):
+            pass
 
-    assert out.template_id == "q_geo_sales"
-    assert out.params["limit"] == 10
-    assert out.params["start_date"] == "DATE_SUB(CURRENT_DATE(), INTERVAL 180 DAY)"
-    assert out.params["end_date"] == "CURRENT_DATE()"
+        def invoke(self, _):
+            return AIMessage(
+                content=(
+                    '{'
+                    '"template_id": "q_geo_sales",'
+                    '"params": {'
+                    '"level": "country",'
+                    '"limit": 10,'
+                    '"start_date": "DATE_SUB(CURRENT_DATE(), INTERVAL 180 DAY)",'
+                    '"end_date": "CURRENT_DATE()"'
+                    '}'
+                    '}'
+                )
+            )
+
+    monkeypatch.setenv("GEMINI_API_KEY", "fake")
+    monkeypatch.setattr(plan_mod, "ChatGoogleGenerativeAI", FakeLLM)
+
+    # base plan before refine (what the node would have produced)
+    base_template = "q_geo_sales"
+    base_params = {"limit": 200}
+
+    new_template, new_params = _maybe_refine_plan_with_llm(
+        state,
+        base_template,
+        base_params,
+    )
+
+    assert new_template == "q_geo_sales"
+    assert new_params["limit"] == 10
+    assert new_params["start_date"] == "DATE_SUB(CURRENT_DATE(), INTERVAL 180 DAY)"
+    assert new_params["end_date"] == "CURRENT_DATE()"
+    assert new_params["level"] == "country"

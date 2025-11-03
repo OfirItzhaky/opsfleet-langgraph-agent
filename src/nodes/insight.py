@@ -1,27 +1,23 @@
-
 from typing import Any, Dict, List
-
 import os
-from google import genai  # google-genai >= 1.0.0 style
-# If your proj used old google.generativeai, adapt the import & client init.
+from pathlib import Path
 
-INSIGHTS_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.messages import AIMessage
+
+INSIGHTS_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+PROMPT_FILE = Path(__file__).parent.parent / "prompts" / "insights.md"
+
 
 def _build_insight_prompt(results: Dict[str, Any]) -> str:
-    """
-    Turn the Python aggregates from results_node() into a stable text
-    that we can feed into Gemini along with strict instructions.
-    """
-    # We only serialize what we have; if some keys are missing, we say so.
+    """Serialize numeric results + append instruction template."""
     summary = results.get("summary") or {}
     top_products = results.get("top_products") or []
     by_geo = results.get("by_geo") or []
     notes = results.get("notes") or []
 
-    lines = []
-    lines.append("You are an e-commerce analytics assistant.")
-    lines.append("Below are computed, validated results from BigQuery. "
-                 "You must NOT create or guess new metrics.")
+    lines: List[str] = []
+    lines.append("Validated e-commerce results below. Do NOT invent numbers.")
     lines.append("")
     lines.append("== SUMMARY ==")
     if summary:
@@ -34,7 +30,6 @@ def _build_insight_prompt(results: Dict[str, Any]) -> str:
     lines.append("== TOP PRODUCTS ==")
     if top_products:
         for p in top_products[:10]:
-            # keep it short to control tokens
             name = p.get("name") or p.get("product_id") or "unknown"
             revenue = p.get("revenue", "n/a")
             lines.append(f"- {name}: revenue={revenue}")
@@ -57,70 +52,60 @@ def _build_insight_prompt(results: Dict[str, Any]) -> str:
         for n in notes:
             lines.append(f"- {n}")
 
-    # Now the actual instruction part comes from the prompt file (see below),
-    # but we can append it here if we want a single-string prompt.
-    lines.append("")
-    lines.append("Generate 4-7 insight bullets, 1-3 recommended actions, "
-                 "and 2 follow-up questions.")
-    lines.append("Reference only the data above. If a metric is missing, say so.")
+    data_block = "\n".join(lines)
 
-    return "\n".join(lines)
+    # load markdown instructions if file exists
+    if PROMPT_FILE.exists():
+        prompt_template = PROMPT_FILE.read_text(encoding="utf-8")
+        return data_block + "\n\n" + prompt_template
+
+    # fallback to inline instructions
+    return data_block + (
+        "\n\nInsights:\n- ...\n\nActions:\n- ...\n\nFollow-ups:\n- ...\n"
+        "Use only the data above. Do not invent numbers."
+    )
 
 
 def insight_node(state: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Turn numeric aggregates from results_node into narrative insights.
-    Expected to be called in the LangGraph step 12.
-    """
+    """Turn numeric aggregates from results_node into narrative insights."""
     results = state.get("results") or {}
 
-    # Build prompt
     prompt = _build_insight_prompt(results)
 
-    # Prepare client
-    api_key = os.getenv("GOOGLE_API_KEY")
+    api_key = os.getenv("GOOGLE_API_KEY", "")
     if not api_key:
-        # fail soft: return empty insights but keep graph going
+        # fail soft
         state["insights"] = {
             "bullets": ["(insight service unavailable: missing GOOGLE_API_KEY)"],
             "actions": [],
-            "followups": []
+            "followups": [],
         }
         return state
 
-    client = genai.Client(api_key=api_key)
-
-    # Call model
     try:
-        resp = client.models.generate_content(
+        llm = ChatGoogleGenerativeAI(
             model=INSIGHTS_MODEL,
-            contents=prompt,
+            google_api_key=api_key,
         )
-        # We expect a friendly, structured-ish text. We'll do a very simple parser.
-        text = resp.text or ""
+        resp = llm.invoke(prompt)
+        # langchain chat models return an AIMessage
+        if isinstance(resp, AIMessage):
+            text = resp.content if isinstance(resp.content, str) else str(resp.content)
+        else:
+            text = str(resp)
     except Exception as exc:
-        # fail soft
         state["insights"] = {
             "bullets": [f"(insight service error: {exc})"],
             "actions": [],
-            "followups": []
+            "followups": [],
         }
         return state
 
-    # --- Simple parsing strategy ---
-    # We will look for our 3 sections by markers. If the model followed the prompt,
-    # it will output e.g.:
-    # Insights:
-    # - ...
-    # Actions:
-    # - ...
-    # Follow-ups:
-    # - ...
     bullets: List[str] = []
     actions: List[str] = []
     followups: List[str] = []
-
     current = None
+
     for line in text.splitlines():
         line = line.strip()
         lower = line.lower()
@@ -144,12 +129,10 @@ def insight_node(state: Dict[str, Any]) -> Dict[str, Any]:
             elif current == "followups":
                 followups.append(item)
 
-    # Enforce counts
-    bullets = bullets[:7]  # 4–7 wanted
-    if len(bullets) < 4:
-        # pad so downstream doesn't break
-        while len(bullets) < 4:
-            bullets.append("(no further insight provided)")
+    # normalize counts
+    bullets = bullets[:7]
+    while len(bullets) < 4:
+        bullets.append("(no further insight provided)")
     actions = actions[:3]
     followups = followups[:2]
 
