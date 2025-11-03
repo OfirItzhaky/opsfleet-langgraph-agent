@@ -5,9 +5,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Public config values your code will import
-GOOGLE_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
-GCP_PROJECT_ID: str | None = os.getenv("GCP_PROJECT_ID") or None
-
+GOOGLE_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID") or None
+GEMINI_MODEL = "gemini-2.5-flash"
 def require_env() -> None:
     """
     Raise a clear error if required env vars are missing.
