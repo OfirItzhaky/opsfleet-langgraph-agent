@@ -28,6 +28,7 @@ class AgentState(BaseModel):
     # Output / reasoning
     insights: List[str] = Field(default_factory=list, description="Generated key insights")
     actions: List[str] = Field(default_factory=list, description="Suggested next actions")
+    followups: List[str] = Field(default_factory=list, description="Suggested follow-up questions or prompts")
     response: Optional[str] = Field(None, description="Formatted text to print in CLI")
 
 
