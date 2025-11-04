@@ -191,15 +191,24 @@ def q_sales_trend(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     limit: int = 1000,
+    category: Optional[str] = None,
 ) -> str:
-    """
-    Time series of orders, revenue, and AOV by day/week/month.
-    Revenue is taken from order_items.sale_price.
-    """
     period_expr = _time_grain_expr("orders", grain)
     where_date = _date_clause("orders", start_date, end_date)
     where_parts = [where_date, "orders.status != 'Cancelled'"]
+
+    joins = [
+        f"JOIN `{schema.fqtn('order_items')}` AS oi ON orders.order_id = oi.order_id"
+    ]
+
+    if category:
+        joins.append(
+            f"JOIN `{schema.fqtn('products')}` AS p ON oi.product_id = p.id"
+        )
+        where_parts.append(f"p.category = '{category}'")
+
     where_sql = "WHERE " + " AND ".join([p for p in where_parts if p]) if any(where_parts) else ""
+    joins_sql = "\n    ".join(joins)
 
     return f"""
     SELECT
@@ -211,13 +220,13 @@ def q_sales_trend(
         2
       ) AS aov
     FROM `{schema.fqtn('orders')}` AS orders
-    JOIN `{schema.fqtn('order_items')}` AS oi
-      ON orders.order_id = oi.order_id
+    {joins_sql}
     {where_sql}
     GROUP BY period
     ORDER BY period
     LIMIT {_safe_limit(limit)}
     """.strip()
+
 
 
 # ------------------------- 4) Geographic Patterns --------------------- #

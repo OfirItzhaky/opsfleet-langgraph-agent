@@ -1,18 +1,21 @@
 from __future__ import annotations
-from src.agent_state import AgentState
+
 import inflect
+from src.agent_state import AgentState
 
 p = inflect.engine()
+
 
 def intent_node(state: AgentState) -> AgentState:
     """
     Classify the user query into one of: segment, product, trend, geo.
     Simple keyword-based approach to keep it fast and testable.
     """
-
-    text = (state.user_query or "").lower()
+    text = (state.user_query or getattr(state, "input", "") or "").lower()
     tokens = text.split()
-    # geographic patterns
+
+    # geo: normalize plurals (countries -> country, cities -> city, etc.)
+    normalized_tokens = {p.singular_noun(tok) or tok for tok in tokens}
     geo_words = {
         "country",
         "state",
@@ -25,15 +28,13 @@ def intent_node(state: AgentState) -> AgentState:
         "by city",
         "where",
     }
-    normalized_tokens = {p.singular_noun(tok) or tok for tok in tokens}
-
     if geo_words & normalized_tokens:
         state.intent = "geo"
         state.params["intent_rule"] = "geo_keywords"
         return state
 
     # trends / time series
-    trend_words = (
+    trend_words = {
         "trend",
         "over time",
         "by month",
@@ -45,14 +46,14 @@ def intent_node(state: AgentState) -> AgentState:
         "time series",
         "seasonality",
         "evolution",
-    )
+    }
     if any(w in text for w in trend_words):
         state.intent = "trend"
         state.params["intent_rule"] = "trend_keywords"
         return state
 
     # product / catalog
-    product_words = (
+    product_words = {
         "product",
         "sku",
         "top products",
@@ -62,14 +63,14 @@ def intent_node(state: AgentState) -> AgentState:
         "category",
         "top items",
         "top sku",
-    )
+    }
     if any(w in text for w in product_words):
         state.intent = "product"
         state.params["intent_rule"] = "product_keywords"
         return state
 
     # customer / segmentation
-    segment_words = (
+    segment_words = {
         "customer",
         "users",
         "segment",
@@ -81,7 +82,7 @@ def intent_node(state: AgentState) -> AgentState:
         "by country of customer",
         "audience",
         "customers by",
-    )
+    }
     if any(w in text for w in segment_words):
         state.intent = "segment"
         state.params["intent_rule"] = "segment_keywords"
