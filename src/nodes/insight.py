@@ -1,7 +1,5 @@
-# src/nodes/insight.py
 import json
 from pathlib import Path
-from typing import List
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import AIMessage
 

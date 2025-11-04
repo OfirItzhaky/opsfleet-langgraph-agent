@@ -1,5 +1,8 @@
-from src.nodes.exec import exec_node
+
+import pandas as pd
+
 from src.agent_state import AgentState
+from src.nodes.exec import exec_node
 
 
 class FakeBQ:
@@ -12,26 +15,37 @@ class FakeBQ:
         assert "select" in sql.lower()
         return 12345
 
-    def execute(self, sql: str, max_rows: int = 50):
+    # exec_node calls THIS and expects a pandas DataFrame
+    def execute_safe(self, sql: str, preview_limit: int = 50):
         self.execute_called = True
-        rows = [
+        data = [
             {"country": "USA", "revenue": 100.0},
             {"country": "Israel", "revenue": 80.0},
         ]
-        total_rows = 2
-        return rows, total_rows
+        return pd.DataFrame(data)
 
 
 def test_exec_happy_path():
-    s = AgentState(last_sql="SELECT * FROM table")
+    state = AgentState(last_sql="SELECT * FROM table")
     fake = FakeBQ()
-    out = exec_node(s, bq=fake)
 
+    out = exec_node(state, bq=fake)
+
+    # came from fake.dry_run
     assert out.dry_run_bytes == 12345
+
+    # exec_node converted the DF to list-of-dicts
     assert len(out.last_results) == 2
+    assert out.last_results[0]["country"] == "USA"
+
+    # your node sets params["rowcount"] = len(rows) (per your original test)
     assert out.params.get("rowcount") == 2
+
     assert fake.dry_run_called
     assert fake.execute_called
+
+
+
 
 
 def test_exec_missing_sql_raises():
