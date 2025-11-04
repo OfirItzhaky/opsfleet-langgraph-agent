@@ -1,7 +1,9 @@
 # src/dev_run_scenarios.py
 import time, json
 from src.graph import build_graph
-from dev_scenarios import DEV_SCENARIOS  # the 6 we listed earlier
+from dev_scenarios import DEV_SCENARIOS
+import sys
+sys.stdout.reconfigure(line_buffering=True)
 
 def run_scenarios():
     graph = build_graph()
@@ -12,7 +14,6 @@ def run_scenarios():
         out = graph.invoke({"user_query": scenario["query"]})
         dt = time.time() - t0
 
-        # try to pull debug info from state
         template_id = out.get("template_id")
         params = out.get("params")
         response_text = out.get("response") or str(out)
@@ -30,7 +31,6 @@ def run_scenarios():
             "response": response_text,
         })
 
-    # final single-shot dump you can paste
     print("\n===== ALL SCENARIOS DUMP =====")
     print(json.dumps(all_results, indent=2))
 

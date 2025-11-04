@@ -86,7 +86,20 @@ def plan_node(state: AgentState) -> AgentState:
     )
 
     state.template_id = template_id
+    # merge as before
     state.params = {**state.params, **refined_params}
+
+    # NEW: keep LLM-only filters in a safe place so downstream nodes
+    # that rewrite params won't lose them
+    interesting_keys = ("countries", "department", "category")
+    refined_filters = {
+        k: v for k, v in refined_params.items() if k in interesting_keys
+    }
+    if refined_filters:
+        # put them under a dedicated key
+        existing = state.params.get("refined_filters") or {}
+        state.params["refined_filters"] = {**existing, **refined_filters}
+
     return state
 
 
@@ -140,6 +153,9 @@ def _maybe_refine_plan_with_llm(
         "level",
         "grain",
         "category",
+        "countries",
+        "department"
+
     }
 
     prompt_path = Path(__file__).parent.parent / "prompts" / "plan_refine.md"

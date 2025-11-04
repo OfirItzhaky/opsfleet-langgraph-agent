@@ -20,14 +20,14 @@ DEV_SCENARIOS = [
 #     },
 #
 # #     # --- MEDIUM (needs date/window or dimension handling) ---
-    {
-        "id": "medium_1_segment_high_value",
-        "query": "find high value customers and tell me what they are buying",
-        "expect": {
-            "intent": "segment",           # should NOT go to geo
-            "min_insights": 4,
-        },
-    },
+#     {
+#         "id": "medium_1_segment_high_value",
+#         "query": "find high value customers and tell me what they are buying",
+#         "expect": {
+#             "intent": "segment",           # should NOT go to geo
+#             "min_insights": 4,
+#         },
+#     },
 #     {
 #         "id": "medium_2_trend_by_category",
 #         "query": "show sales trend for outerwear and coats over the past 90 days",
@@ -38,17 +38,17 @@ DEV_SCENARIOS = [
 #     },
 # #
 # #     # --- HARD (composite / multiple constraints) ---
-#     {
-#         "id": "hard_1_geo_segment_product_mix",
-#         "query": (
-#             "compare revenue between US and Canada for men's products and tell me "
-#             "which brands to stock more this quarter"
-#         ),
-#         "expect": {
-#             "intent": "geo",               # or product+geo, but we expect geo dominant
-#             "min_insights": 4,
-#         },
-#     },
+    {
+        "id": "hard_1_geo_segment_product_mix",
+        "query": (
+            "compare revenue between US and Canada for men's products and tell me "
+            "which brands to stock more this quarter"
+        ),
+        "expect": {
+            "intent": "geo",               # or product+geo, but we expect geo dominant
+            "min_insights": 4,
+        },
+    },
 #     {
 #         "id": "hard_2_churnish_behavior",
 #         "query": (
