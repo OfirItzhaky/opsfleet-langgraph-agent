@@ -8,6 +8,8 @@ load_dotenv()
 GOOGLE_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID") or None
 GEMINI_MODEL = "gemini-2.5-flash"
+# Can use gemini-2.5-pro assuming API KEY with usage allowance
+.
 def require_env() -> None:
     """
     Raise a clear error if required env vars are missing.
