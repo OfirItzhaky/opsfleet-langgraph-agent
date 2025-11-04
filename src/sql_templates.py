@@ -20,22 +20,49 @@ from . import schema
 def _date_clause(table: str, start_date: Optional[str], end_date: Optional[str]) -> str:
     """
     Build a WHERE date clause using the table's default date column.
-    Dates should be 'YYYY-MM-DD'. If both None, default to last 365 days.
+
+    Accepts either:
+    - literal dates: '2022-01-01'
+    - SQL expressions: DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY), CURRENT_DATE()
+
+    If both None, default to last 365 days.
     """
-    date_col = schema.get_default_date_col(table)  # e.g., "created_at"
+    date_col = schema.get_default_date_col(table)
     if not date_col:
         return ""
 
-    # QUALIFY with table alias/name
     fq = f"{table}.{date_col}"
 
+    def is_sql_expr(val: str) -> bool:
+        v = val.strip().upper()
+        return (
+            v.startswith("DATE_SUB(")
+            or v.startswith("DATE_ADD(")
+            or v == "CURRENT_DATE()"
+            or v.startswith("DATE(")  # already wrapped
+        )
+
     if start_date and end_date:
+        if is_sql_expr(start_date) and is_sql_expr(end_date):
+            return f"DATE({fq}) BETWEEN {start_date} AND {end_date}"
+        if is_sql_expr(start_date):
+            return f"DATE({fq}) BETWEEN {start_date} AND DATE('{end_date}')"
+        if is_sql_expr(end_date):
+            return f"DATE({fq}) BETWEEN DATE('{start_date}') AND {end_date}"
         return f"DATE({fq}) BETWEEN DATE('{start_date}') AND DATE('{end_date}')"
+
     if start_date:
+        if is_sql_expr(start_date):
+            return f"DATE({fq}) >= {start_date}"
         return f"DATE({fq}) >= DATE('{start_date}')"
+
     if end_date:
+        if is_sql_expr(end_date):
+            return f"DATE({fq}) <= {end_date}"
         return f"DATE({fq}) <= DATE('{end_date}')"
+
     return f"DATE({fq}) >= DATE_SUB(CURRENT_DATE(), INTERVAL 365 DAY)"
+
 
 
 def _safe_limit(n: int) -> int:

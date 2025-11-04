@@ -28,17 +28,45 @@ def plan_node(state: AgentState) -> AgentState:
         template_id = "q_customer_segments"
         params.update({"by": "country", "limit": 100})
 
+
     elif intent == "product":
+
         template_id = "q_top_products"
-        params.update({"metric": "revenue", "limit": 20})
+
+        params.update({
+
+            "metric": "revenue",
+
+            "limit": 20,
+
+            "start_date": "DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)",
+
+            "end_date": "CURRENT_DATE()",
+
+        })
+
 
     elif intent == "geo":
+
         template_id = "q_geo_sales"
-        params.update({"level": "country", "limit": 200})
+
+        params.update({
+
+            "level": "country",
+
+            "limit": 200,
+
+            "start_date": "DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)",
+
+            "end_date": "CURRENT_DATE()",
+
+        })
+
 
     else:
         template_id = "q_sales_trend"
         params.update({"grain": "month", "limit": 1000})
+        state.params["intent_rule"] = state.params.get("intent_rule") or "fallback_trend"
 
     # make base plan visible in state
     state.template_id = template_id
@@ -62,23 +90,38 @@ def _maybe_refine_plan_with_llm(
     params: Dict[str, Any],
 ) -> Tuple[str, Dict[str, Any]]:
     """
-    Optionally refines a generated query plan using Gemini for long user queries.
+    Optionally refines a generated query plan using Gemini.
 
-    If the query text is long (>60 chars) and a Gemini API key is available,
-    calls the model with a structured prompt to adjust the template_id and params.
-    Safely parses and validates the LLM JSON response before applying updates.
+    We refine when:
+    - intent is product or geo (they often need extra params like level/metric/window), OR
+    - intent is segment and the query is medium-length (>= 40 chars), OR
+    - query is generally long/complex (>= 60 chars).
+
+    Otherwise we keep it deterministic and skip the LLM.
     """
-
     user_query = (state.user_query or "").strip()
+    intent = (state.intent or "").strip()
 
-    # short/simple → stay deterministic
-    if len(user_query) < 60:
+    def should_refine(intent: str, user_query: str) -> bool:
+        # product / geo almost always benefit from LLM-param tweaks
+        if intent in ("product", "geo"):
+            return True
+        # segment often vague → refine if not super short
+        if intent == "segment" and len(user_query) >= 40:
+            return True
+        # anything really long → refine
+        if len(user_query) >= 60:
+            return True
+        return False
+
+    if not should_refine(intent, user_query):
         return template_id, params
 
     # resolve API key (env overrides module-level)
     api_key = GEMINI_API_KEY
     if not api_key:
-        raise RuntimeError("plan_node: long query requested LLM refine but GEMINI_API_KEY is missing")
+        # we decided to refine but can't → just return original
+        return template_id, params
 
     allowed_templates = {
         "q_customer_segments",
@@ -107,7 +150,6 @@ def _maybe_refine_plan_with_llm(
         .replace("{{params}}", str(params))
     )
 
-    # call Gemini via LangChain wrapper
     try:
         llm = ChatGoogleGenerativeAI(
             model=GEMINI_MODEL,
@@ -140,3 +182,4 @@ def _maybe_refine_plan_with_llm(
             new_params[k] = v
 
     return new_template_id, new_params
+

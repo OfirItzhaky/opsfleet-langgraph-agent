@@ -1,6 +1,8 @@
 from __future__ import annotations
 from src.agent_state import AgentState
+import inflect
 
+p = inflect.engine()
 
 def intent_node(state: AgentState) -> AgentState:
     """
@@ -9,20 +11,23 @@ def intent_node(state: AgentState) -> AgentState:
     """
 
     text = (state.user_query or "").lower()
-
+    tokens = text.split()
     # geographic patterns
-    geo_words = (
+    geo_words = {
         "country",
         "state",
         "city",
         "region",
         "geo",
         "location",
+        "by",
         "by country",
         "by city",
-        "where are",
-    )
-    if any(w in text for w in geo_words):
+        "where",
+    }
+    normalized_tokens = {p.singular_noun(tok) or tok for tok in tokens}
+
+    if geo_words & normalized_tokens:
         state.intent = "geo"
         state.params["intent_rule"] = "geo_keywords"
         return state

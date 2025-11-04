@@ -20,10 +20,8 @@ def _normalize_date(val: Optional[str]) -> Optional[str]:
     """
     if val is None:
         return None
-    v = val.strip().upper()
-    if v.startswith("DATE_SUB(") or v == "CURRENT_DATE()":
-        return None
-    return val
+
+    return val.strip()
 
 
 def sqlgen_node(state: AgentState) -> AgentState:
