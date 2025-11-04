@@ -1,5 +1,5 @@
 from src.nodes.results import results_node
-from src.state import AgentState
+from src.agent_state import AgentState
 
 
 def test_results_empty_rows():

@@ -1,5 +1,5 @@
 from src.nodes.sqlgen import sqlgen_node
-from src.state import AgentState
+from src.agent_state import AgentState
 
 
 def test_sqlgen_customer_segments():

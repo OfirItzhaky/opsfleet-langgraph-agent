@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Any, Optional, List, Dict
 
-from src.state import AgentState
+from src.agent_state import AgentState
 
 
 try:
@@ -35,13 +35,23 @@ def exec_node(state: AgentState, bq: Optional[Any] = None) -> AgentState:
         state.params["exec_error"] = f"dry_run_failed: {e}"
         return state
 
-    # execute with a small cap
     try:
-        rows, total_rows = bq.execute(sql, max_rows=50)
+        df = bq.execute_safe(sql, preview_limit=50)
     except Exception as e:
         state.params["exec_error"] = f"execute_failed: {e}"
         state.last_results = []
         return state
+
+    rows = df.to_dict(orient="records") if not df.empty else []
+    state.last_results = rows
+    state.params["rowcount"] = len(rows)
+    return state
+
+    # normalize to list[dict]
+    rows = df.to_dict(orient="records") if not df.empty else []
+    state.last_results = rows
+    state.params["rowcount"] = len(rows)
+    return state
 
     # normalize rows to list[dict]
     if rows is None:

@@ -1,5 +1,5 @@
 from src.graph import build_graph
-from src.state import AgentState
+from src.agent_state import AgentState
 
 
 def test_cli_graph_invokes_with_minimal_state():

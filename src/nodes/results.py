@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import List, Dict, Any
 import pandas as pd
 
-from src.state import AgentState
+from src.agent_state import AgentState
 
 
 def results_node(state: AgentState) -> AgentState:

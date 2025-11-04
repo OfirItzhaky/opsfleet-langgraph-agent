@@ -1,110 +1,76 @@
-from typing import Any, Dict, List
-import os
+# src/nodes/insight.py
+import json
 from pathlib import Path
-
+from typing import List
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import AIMessage
 
-INSIGHTS_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-PROMPT_FILE = Path(__file__).parent.parent / "prompts" / "insights.md"
+from src import config
+from src.agent_state import AgentState
+
+INSIGHTS_MODEL = config.GEMINI_MODEL  # or whatever you used
 
 
-def _build_insight_prompt(results: Dict[str, Any]) -> str:
-    """Serialize numeric results + append instruction template."""
-    summary = results.get("summary") or {}
-    top_products = results.get("top_products") or []
-    by_geo = results.get("by_geo") or []
-    notes = results.get("notes") or []
+def insight_node(state: AgentState) -> AgentState:
+    """
+    Turn numeric aggregates from results_node into narrative insights.
+    Uses last_results and the summaries that results_node stored in params.
+    """
+    # pull actual data from state
+    rows = state.last_results or []
+    summary = (state.params or {}).get("results_summary") or {}
+    top_preview = (state.params or {}).get("top_preview") or []
 
-    lines: List[str] = []
-    lines.append("Validated e-commerce results below. Do NOT invent numbers.")
-    lines.append("")
-    lines.append("== SUMMARY ==")
-    if summary:
-        for k, v in summary.items():
-            lines.append(f"- {k}: {v}")
-    else:
-        lines.append("- (no summary available)")
-
-    lines.append("")
-    lines.append("== TOP PRODUCTS ==")
-    if top_products:
-        for p in top_products[:10]:
-            name = p.get("name") or p.get("product_id") or "unknown"
-            revenue = p.get("revenue", "n/a")
-            lines.append(f"- {name}: revenue={revenue}")
-    else:
-        lines.append("- (no top products available)")
-
-    lines.append("")
-    lines.append("== BY GEO ==")
-    if by_geo:
-        for g in by_geo[:10]:
-            geo = g.get("country") or g.get("state") or "area"
-            val = g.get("revenue") or g.get("orders") or "n/a"
-            lines.append(f"- {geo}: {val}")
-    else:
-        lines.append("- (no geo breakdown available)")
-
-    if notes:
-        lines.append("")
-        lines.append("== NOTES ==")
-        for n in notes:
-            lines.append(f"- {n}")
-
-    data_block = "\n".join(lines)
-
-    # load markdown instructions if file exists
-    if PROMPT_FILE.exists():
-        prompt_template = PROMPT_FILE.read_text(encoding="utf-8")
-        return data_block + "\n\n" + prompt_template
-
-    # fallback to inline instructions
-    return data_block + (
-        "\n\nInsights:\n- ...\n\nActions:\n- ...\n\nFollow-ups:\n- ...\n"
-        "Use only the data above. Do not invent numbers."
-    )
-
-
-def insight_node(state: Dict[str, Any]) -> Dict[str, Any]:
-    """Turn numeric aggregates from results_node into narrative insights."""
-    results = state.get("results") or {}
-
-    prompt = _build_insight_prompt(results)
-
-    api_key = os.getenv("GOOGLE_API_KEY", "")
-    if not api_key:
-        # fail soft
-        state["insights"] = {
-            "bullets": ["(insight service unavailable: missing GOOGLE_API_KEY)"],
-            "actions": [],
-            "followups": [],
-        }
+    # if no rows at all -> fallback text
+    if not rows:
+        state.insights = [
+            "No rows were returned for this query.",
+            "Try broadening the date range or removing a filter.",
+            "The agent could not produce product-level insights.",
+            "(no further insight provided)",
+        ]
+        state.actions = [
+            "Verify that the underlying BigQuery tables contain data for the requested period.",
+        ]
+        state.followups = [
+            "Do you want to re-run this for the last 365 days?",
+        ]
         return state
 
+    # build a simple prompt from what we *do* have
+    prompt_path = Path(__file__).parent.parent / "prompts" / "insights.md"
+    template = prompt_path.read_text(encoding="utf-8")
+    prompt = (
+        template
+        .replace("{{summary}}", json.dumps(summary, ensure_ascii=False))
+        .replace("{{top_rows}}", json.dumps((top_preview or rows)[:5], ensure_ascii=False))
+    )
+
+    api_key = config.GOOGLE_API_KEY
+    if not api_key:
+        # soft fallback
+        if not api_key:
+            raise RuntimeError("insight_node: missing GOOGLE_API_KEY (Gemini required)")
+
+    # call Gemini
     try:
         llm = ChatGoogleGenerativeAI(
             model=INSIGHTS_MODEL,
             google_api_key=api_key,
         )
         resp = llm.invoke(prompt)
-        # langchain chat models return an AIMessage
         if isinstance(resp, AIMessage):
             text = resp.content if isinstance(resp.content, str) else str(resp.content)
         else:
             text = str(resp)
     except Exception as exc:
-        state["insights"] = {
-            "bullets": [f"(insight service error: {exc})"],
-            "actions": [],
-            "followups": [],
-        }
-        return state
+        raise RuntimeError(f"insight_node: Gemini call failed: {exc}")
 
-    bullets: List[str] = []
-    actions: List[str] = []
-    followups: List[str] = []
-    current = None
+    # parse LLM text into 3 sections
+    bullets = []
+    actions = []
+    followups = []
+    current = "insights"
 
     for line in text.splitlines():
         line = line.strip()
@@ -136,9 +102,19 @@ def insight_node(state: Dict[str, Any]) -> Dict[str, Any]:
     actions = actions[:3]
     followups = followups[:2]
 
-    state["insights"] = {
-        "bullets": bullets,
-        "actions": actions,
-        "followups": followups,
-    }
+    state.insights = bullets
+    state.actions = actions
+    state.followups = followups
     return state
+
+
+def _build_insight_prompt_from_state(rows, summary, top_preview) -> str:
+    # take top 5 rows for brevity
+    sample = (top_preview or rows)[:5]
+    return (
+        "You are an e-commerce analytics assistant. "
+        "Given the top products and their revenue, write insights, actions, and follow-ups.\n\n"
+        f"Summary: {summary}\n"
+        f"Top products (sample): {sample}\n\n"
+        "Format your answer in sections called Insights, Actions, and Follow-ups, each as bullet points."
+    )

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from src.state import AgentState
+from src.agent_state import AgentState
 
 
 def intent_node(state: AgentState) -> AgentState:

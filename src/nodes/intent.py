@@ -1,5 +1,5 @@
 from __future__ import annotations
-from src.state import AgentState
+from src.agent_state import AgentState
 
 
 def intent_node(state: AgentState) -> AgentState:
@@ -7,6 +7,7 @@ def intent_node(state: AgentState) -> AgentState:
     Classify the user query into one of: segment, product, trend, geo.
     Simple keyword-based approach to keep it fast and testable.
     """
+
     text = (state.user_query or "").lower()
 
     # geographic patterns

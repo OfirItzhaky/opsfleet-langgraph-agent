@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from langgraph.graph import StateGraph, END
 
+from src.agent_state import AgentState
 from src.nodes.intent import intent_node
 from src.nodes.plan import plan_node
 from src.nodes.sqlgen import sqlgen_node
@@ -12,7 +13,7 @@ from src.nodes.respond import respond_node
 
 
 def build_graph():
-    sg = StateGraph(dict)
+    sg = StateGraph(AgentState)
 
     sg.add_node("intent", intent_node)
     sg.add_node("plan", plan_node)

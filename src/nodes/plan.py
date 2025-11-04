@@ -8,13 +8,14 @@ from pathlib import Path
 from langchain_google_genai import ChatGoogleGenerativeAI  # <– use this
 from langchain_core.messages import AIMessage
 
-from src.state import AgentState
+from src import config
+from src.agent_state import AgentState
 
 DEFAULT_START = "DATE_SUB(CURRENT_DATE(), INTERVAL 365 DAY)"
 DEFAULT_END = "CURRENT_DATE()"
 
-GEMINI_MODEL = "gemini-2.5-flash"
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = config.GEMINI_MODEL
+GEMINI_API_KEY = config.GOOGLE_API_KEY
 
 
 def plan_node(state: AgentState) -> AgentState:
@@ -43,7 +44,7 @@ def plan_node(state: AgentState) -> AgentState:
 
     # make base plan visible in state
     state.template_id = template_id
-    state.params.update(params)
+    state.params = {**state.params, **params}
 
     # optional LLM refine
     template_id, refined_params = _maybe_refine_plan_with_llm(
@@ -53,7 +54,7 @@ def plan_node(state: AgentState) -> AgentState:
     )
 
     state.template_id = template_id
-    state.params.update(refined_params)
+    state.params = {**state.params, **refined_params}
     return state
 
 
@@ -77,9 +78,9 @@ def _maybe_refine_plan_with_llm(
         return template_id, params
 
     # resolve API key (env overrides module-level)
-    api_key = os.getenv("GEMINI_API_KEY", "") or GEMINI_API_KEY
+    api_key = GEMINI_API_KEY
     if not api_key:
-        return template_id, params
+        raise RuntimeError("plan_node: long query requested LLM refine but GEMINI_API_KEY is missing")
 
     allowed_templates = {
         "q_customer_segments",
@@ -119,8 +120,8 @@ def _maybe_refine_plan_with_llm(
             text = resp.content if isinstance(resp.content, str) else str(resp.content)
         else:
             text = str(resp)
-    except Exception:
-        return template_id, params
+    except Exception as exc:
+        raise RuntimeError(f"plan_node: Gemini refine failed: {exc}")
 
     # parse JSON from LLM
     try:

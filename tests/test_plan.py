@@ -3,7 +3,7 @@ import src.nodes.plan as plan_mod
 import types
 from langchain_core.messages import AIMessage
 import src.nodes.plan as plan_mod
-from src.state import AgentState
+from src.agent_state import AgentState
 from src.nodes.plan import plan_node, DEFAULT_START, DEFAULT_END
 def test_plan_for_segment():
     s = AgentState(user_query="segment customers", intent="segment")
@@ -55,7 +55,7 @@ def test_plan_preserves_existing_params():
 
 # tests/test_plan.py
 from src.nodes.plan import plan_node, DEFAULT_START, DEFAULT_END, _maybe_refine_plan_with_llm
-from src.state import AgentState
+from src.agent_state import AgentState
 import types
 
 

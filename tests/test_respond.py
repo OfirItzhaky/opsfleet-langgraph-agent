@@ -1,5 +1,5 @@
 from src.nodes.respond import respond_node, MAX_RESP_LEN
-from src.state import AgentState
+from src.agent_state import AgentState
 
 
 def test_respond_happy_path():

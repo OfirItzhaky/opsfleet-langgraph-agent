@@ -1,6 +1,7 @@
 from src.graph import build_graph
-from src.state import AgentState
+from src.agent_state import AgentState
 from src.utils.logging import setup_logging
+import logging
 
 
 def run_cli() -> None:
@@ -18,16 +19,14 @@ def run_cli() -> None:
 
         try:
 
-            result = graph.invoke(state.model_dump())
+            result = graph.invoke(state)
 
             output = (
-                result.get("response_text")
-                or result.get("response")
-                or "No response was produced by the agent."
+                    result.get("response")  # main field now
+                    or "No response was produced by the agent."
             )
             print("\n" + output + "\n")
         except Exception as exc:
-            import logging
             logging.exception("error while running agent")
             print(f"error: {exc}")
 

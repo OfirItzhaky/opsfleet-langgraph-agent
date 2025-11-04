@@ -1,4 +1,4 @@
-from src.state import AgentState
+from src.agent_state import AgentState
 
 def test_agent_state_defaults_and_validation():
     s = AgentState()

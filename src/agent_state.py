@@ -31,7 +31,9 @@ class AgentState(BaseModel):
     followups: List[str] = Field(default_factory=list, description="Suggested follow-up questions or prompts")
     response: Optional[str] = Field(None, description="Formatted text to print in CLI")
 
-
+    def get(self, key: str, default=None):
+        """Allow dict-like safe access for legacy code."""
+        return getattr(self, key, default)
 if __name__ == "__main__":
     # quick smoke test
     sample = AgentState(
