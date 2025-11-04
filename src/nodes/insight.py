@@ -99,6 +99,19 @@ def insight_node(state: AgentState) -> AgentState:
         bullets.append("(no further insight provided)")
     actions = actions[:3]
     followups = followups[:2]
+    # --- Context-aware enrichment: segment + "what they buy" ---
+    q_text = (state.user_query or "").lower()
+    if (
+        state.template_id == "q_customer_segments"
+        and any(word in q_text for word in ["buy", "bought", "purchas", "product", "brand", "item"])
+    ):
+        # append a follow-up only if not already present
+        hint = (
+            "To understand what these high-value customers are buying, "
+            "run a top-products query for their top regions (e.g., China, US)."
+        )
+        if hint not in followups:
+            followups.append(hint)
 
     state.insights = bullets
     state.actions = actions
