@@ -14,3 +14,7 @@ __pycache__/
 # local configs and outputs
 .env
 charts/
+
+# Test coverage data
+.coverage
+htmlcov/
