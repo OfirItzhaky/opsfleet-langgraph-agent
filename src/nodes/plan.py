@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Dict, Any, Tuple
 import json
 import re
+import time
 from pathlib import Path
 
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -9,6 +10,9 @@ from langchain_core.messages import AIMessage
 
 from src import config
 from src.agent_state import AgentState
+from src.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 DEFAULT_START = "DATE_SUB(CURRENT_DATE(), INTERVAL 365 DAY)"
 DEFAULT_END = "CURRENT_DATE()"
@@ -18,7 +22,14 @@ GEMINI_API_KEY = config.GOOGLE_API_KEY
 
 
 def plan_node(state: AgentState) -> AgentState:
+    start_time = time.time()
     intent = state.intent or "trend"
+    
+    logger.info("plan_node starting", extra={
+        "node": "plan",
+        "intent": intent,
+        "query": state.user_query
+    })
 
     params: Dict[str, Any] = {
         "start_date": DEFAULT_START,
@@ -77,17 +88,32 @@ def plan_node(state: AgentState) -> AgentState:
     # make base plan visible in state
     state.template_id = template_id
     state.params = {**state.params, **params}
+    
+    logger.info("plan_node base plan created", extra={
+        "node": "plan",
+        "template_id": template_id,
+        "params_keys": list(params.keys())
+    })
 
     # optional LLM refine
+    llm_start = time.time()
     template_id, refined_params = _maybe_refine_plan_with_llm(
         state,
         template_id,
         state.params,
     )
+    llm_duration_ms = (time.time() - llm_start) * 1000
 
     state.template_id = template_id
     # merge as before
     state.params = {**state.params, **refined_params}
+    
+    logger.info("plan_node LLM refinement completed", extra={
+        "node": "plan",
+        "llm_duration_ms": round(llm_duration_ms, 2),
+        "final_template_id": template_id,
+        "refined_params": list(refined_params.keys())
+    })
 
     # NEW: keep LLM-only filters in a safe place so downstream nodes
     # that rewrite params won't lose them
@@ -99,6 +125,14 @@ def plan_node(state: AgentState) -> AgentState:
         # put them under a dedicated key
         existing = state.params.get("refined_filters") or {}
         state.params["refined_filters"] = {**existing, **refined_filters}
+    
+    duration_ms = (time.time() - start_time) * 1000
+    logger.info("plan_node completed", extra={
+        "node": "plan",
+        "duration_ms": round(duration_ms, 2),
+        "final_template_id": state.template_id,
+        "param_count": len(state.params)
+    })
 
     return state
 
@@ -131,10 +165,17 @@ def _maybe_refine_plan_with_llm(
         return False
 
     if not should_refine(intent, user_query):
+        logger.debug("plan_node skipping LLM refinement", extra={
+            "node": "plan",
+            "reason": "query_too_simple",
+            "intent": intent,
+            "query_length": len(user_query)
+        })
         return template_id, params
 
     api_key = GEMINI_API_KEY
     if not api_key:
+        logger.warning("plan_node skipping LLM refinement: no API key", extra={"node": "plan"})
         return template_id, params
 
     allowed_templates = {
@@ -168,6 +209,11 @@ def _maybe_refine_plan_with_llm(
     )
 
     try:
+        logger.debug("plan_node calling LLM for refinement", extra={
+            "node": "plan",
+            "model": GEMINI_MODEL,
+            "prompt_length": len(prompt)
+        })
         llm = ChatGoogleGenerativeAI(
             model=GEMINI_MODEL,
             google_api_key=api_key,
@@ -178,12 +224,37 @@ def _maybe_refine_plan_with_llm(
             text = resp.content if isinstance(resp.content, str) else str(resp.content)
         else:
             text = str(resp)
+        logger.debug("plan_node LLM response received", extra={
+            "node": "plan",
+            "response_length": len(text)
+        })
     except Exception as exc:
+        logger.error("plan_node LLM refinement failed", extra={
+            "node": "plan",
+            "error": str(exc)
+        }, exc_info=True)
         raise RuntimeError(f"plan_node: Gemini refine failed: {exc}")
 
+    # Strip markdown code fences if present (```json ... ```)
+    text_clean = text.strip()
+    if text_clean.startswith("```"):
+        # Remove opening fence
+        lines = text_clean.split('\n')
+        if lines[0].startswith("```"):
+            lines = lines[1:]
+        # Remove closing fence
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        text_clean = '\n'.join(lines)
+    
     try:
-        refined = json.loads(text)
-    except Exception:
+        refined = json.loads(text_clean)
+    except Exception as e:
+        logger.warning("plan_node LLM response not valid JSON", extra={
+            "node": "plan",
+            "error": str(e),
+            "response_preview": text_clean[:200]
+        })
         return template_id, params
 
     new_template_id = refined.get("template_id", template_id)

@@ -1,12 +1,15 @@
 import json
+import time
 from pathlib import Path
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import AIMessage
 
 from src import config
 from src.agent_state import AgentState
+from src.utils.logging import get_logger
 
 INSIGHTS_MODEL = config.GEMINI_MODEL  # or whatever you used
+logger = get_logger(__name__)
 
 
 def insight_node(state: AgentState) -> AgentState:
@@ -14,13 +17,21 @@ def insight_node(state: AgentState) -> AgentState:
     Turn numeric aggregates from results_node into narrative insights.
     Uses last_results and the summaries that results_node stored in params.
     """
+    start_time = time.time()
     # pull actual data from state
     rows = state.last_results or []
     summary = (state.params or {}).get("results_summary") or {}
     top_preview = (state.params or {}).get("top_preview") or []
+    
+    logger.info("insight_node starting", extra={
+        "node": "insight",
+        "row_count": len(rows),
+        "has_summary": bool(summary)
+    })
 
     # if no rows at all -> fallback text
     if not rows:
+        logger.info("insight_node using fallback (no rows)", extra={"node": "insight"})
         state.insights = [
             "No rows were returned for this query.",
             "Try broadening the date range or removing a filter.",
@@ -52,16 +63,34 @@ def insight_node(state: AgentState) -> AgentState:
 
     # call Gemini
     try:
+        logger.debug("insight_node calling LLM", extra={
+            "node": "insight",
+            "model": INSIGHTS_MODEL,
+            "prompt_length": len(prompt)
+        })
+        llm_start = time.time()
         llm = ChatGoogleGenerativeAI(
             model=INSIGHTS_MODEL,
             google_api_key=api_key,
         )
         resp = llm.invoke(prompt)
+        llm_duration_ms = (time.time() - llm_start) * 1000
+        
         if isinstance(resp, AIMessage):
             text = resp.content if isinstance(resp.content, str) else str(resp.content)
         else:
             text = str(resp)
+        
+        logger.info("insight_node LLM response received", extra={
+            "node": "insight",
+            "llm_duration_ms": round(llm_duration_ms, 2),
+            "response_length": len(text)
+        })
     except Exception as exc:
+        logger.error("insight_node LLM call failed", extra={
+            "node": "insight",
+            "error": str(exc)
+        }, exc_info=True)
         raise RuntimeError(f"insight_node: Gemini call failed: {exc}")
 
     # parse LLM text into 3 sections
@@ -116,6 +145,16 @@ def insight_node(state: AgentState) -> AgentState:
     state.insights = bullets
     state.actions = actions
     state.followups = followups
+    
+    duration_ms = (time.time() - start_time) * 1000
+    logger.info("insight_node completed", extra={
+        "node": "insight",
+        "duration_ms": round(duration_ms, 2),
+        "insights_count": len(bullets),
+        "actions_count": len(actions),
+        "followups_count": len(followups)
+    })
+    
     return state
 
 

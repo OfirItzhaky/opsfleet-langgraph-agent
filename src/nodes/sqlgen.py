@@ -1,7 +1,11 @@
 from __future__ import annotations
 from typing import Any, Callable, Dict, Optional
+import time
 from src.agent_state import AgentState
 from src import sql_templates as qt
+from src.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 # map template_id -> callable
 TEMPLATE_REGISTRY: Dict[str, Callable[..., str]] = {
@@ -27,11 +31,24 @@ def sqlgen_node(state: AgentState) -> AgentState:
     Build the final SQL string from the chosen template and params.
     Only uses whitelisted templates.
     """
+    start_time = time.time()
     template_id = state.template_id
+    
+    logger.info("sqlgen_node starting", extra={
+        "node": "sqlgen",
+        "template_id": template_id
+    })
+    
     if not template_id:
+        logger.error("sqlgen_node missing template_id", extra={"node": "sqlgen"})
         raise ValueError("sqlgen_node: template_id is missing on state")
 
     if template_id not in TEMPLATE_REGISTRY:
+        logger.error("sqlgen_node unknown template", extra={
+            "node": "sqlgen",
+            "template_id": template_id,
+            "available_templates": list(TEMPLATE_REGISTRY.keys())
+        })
         raise ValueError(f"sqlgen_node: unknown template_id '{template_id}'")
 
     func = TEMPLATE_REGISTRY[template_id]
@@ -82,4 +99,13 @@ def sqlgen_node(state: AgentState) -> AgentState:
 
     state.last_sql = sql
     state.params["sqlgen_status"] = "ok"
+    
+    duration_ms = (time.time() - start_time) * 1000
+    logger.info("sqlgen_node completed", extra={
+        "node": "sqlgen",
+        "template_id": template_id,
+        "sql_length": len(sql),
+        "duration_ms": round(duration_ms, 2)
+    })
+    
     return state

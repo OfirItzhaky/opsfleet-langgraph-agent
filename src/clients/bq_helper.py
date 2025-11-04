@@ -5,7 +5,6 @@ Builds on the existing BigQueryRunner in src/clients/bq_client.py.
 """
 
 from __future__ import annotations
-import logging
 import time
 from typing import Optional, Iterator
 import pandas as pd
@@ -14,6 +13,9 @@ from google.api_core import exceptions as gex
 import os
 
 from .bq_client import BigQueryRunner
+from src.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 DEFAULT_MAX_BYTES = 1_000_000_000  # 1 GB cap for safety
@@ -57,7 +59,10 @@ class BQHelper:
         job_config = bigquery.QueryJobConfig(dry_run=True, use_query_cache=True)
         job = self.client.query(sql, job_config=job_config)
         est = int(job.total_bytes_processed or 0)
-        logging.info(f"Dry-run estimate: {est:,} bytes")
+        logger.info("BigQuery dry-run completed", extra={
+            "estimated_bytes": est,
+            "sql_length": len(sql)
+        })
         return est
 
     def execute_safe(self, sql: str, *, preview_limit: Optional[int] = None) -> pd.DataFrame:
@@ -107,10 +112,18 @@ class BQHelper:
             except (gex.Forbidden, gex.TooManyRequests, gex.ResourceExhausted) as e:
                 attempt += 1
                 if attempt > retries:
-                    logging.error("Exceeded retry attempts.")
+                    logger.error("BigQuery retry limit exceeded", extra={
+                        "attempts": attempt,
+                        "error_type": e.__class__.__name__
+                    })
                     raise
                 sleep_s = base_delay * (2 ** (attempt - 1))
-                logging.warning(f"{e.__class__.__name__}: retrying in {sleep_s:.1f}s (attempt {attempt}/{retries})")
+                logger.warning("BigQuery rate limit hit, retrying", extra={
+                    "error_type": e.__class__.__name__,
+                    "retry_delay_s": sleep_s,
+                    "attempt": attempt,
+                    "max_retries": retries
+                })
                 time.sleep(sleep_s)
             except Exception:
                 # Surface unexpected errors immediately
