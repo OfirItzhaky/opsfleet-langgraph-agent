@@ -147,7 +147,7 @@ Run:
 python -m src.main
 ```
 
-Then type a question here are a fwe examples:
+Then type a question here are a few examples:
 
 - `show me the top revenue products from the last 30 days`
 - `which countries bought the most last month?`
@@ -168,6 +168,7 @@ Besides the interactive CLI, you can run a small script that feeds the agent wit
 ```bash
 python -m src.dev_run_scenarios
 ```
+
 ## Configuration (models, env, BigQuery)
 
 All runtime configuration is centralized in `src/config.py` so you don’t have to change the nodes.
