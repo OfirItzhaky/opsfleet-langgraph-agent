@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+import os
 from typing import Dict, Any, Tuple
 import json
 import re
@@ -7,6 +9,7 @@ from pathlib import Path
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import AIMessage
+from src.config import GEMINI_API_KEY, GEMINI_MODEL
 
 from src import config
 from src.agent_state import AgentState
@@ -18,7 +21,7 @@ DEFAULT_START = "DATE_SUB(CURRENT_DATE(), INTERVAL 365 DAY)"
 DEFAULT_END = "CURRENT_DATE()"
 
 GEMINI_MODEL = config.GEMINI_MODEL
-GEMINI_API_KEY = config.GOOGLE_API_KEY
+GEMINI_API_KEY = config.GEMINI_API_KEY
 
 # simple keyword families so we can expand later
 CATEGORY_KEYWORDS = {
@@ -173,15 +176,20 @@ def _maybe_refine_plan_with_llm(
     params: Dict[str, Any],
 ) -> Tuple[str, Dict[str, Any]]:
     """
-    REALLY optional: only used when we didn't lock the template.
-    This is now a "nice to have", not "always run".
+    Optionally refine the plan with an LLM.
+    IMPORTANT: we always start from the original params and overlay
+    refined ones, so callers never lose defaults.
     """
     user_query = (state.user_query or "").strip()
 
-    api_key = GEMINI_API_KEY
+    # always start from base params
+    base_params: Dict[str, Any] = dict(params or {})
+
+    api_key = os.getenv("GEMINI_API_KEY") or GEMINI_API_KEY
+
     if not api_key:
         logger.warning("plan_node skipping LLM refinement: no API key", extra={"node": "plan"})
-        return template_id, {}
+        return template_id, base_params
 
     allowed_templates = {
         "q_customer_segments",
@@ -208,7 +216,7 @@ def _maybe_refine_plan_with_llm(
     prompt = (
         prompt_template.replace("{{user_query}}", user_query)
         .replace("{{template_id}}", template_id)
-        .replace("{{params}}", str(params))
+        .replace("{{params}}", str(base_params))
     )
 
     try:
@@ -220,13 +228,14 @@ def _maybe_refine_plan_with_llm(
         llm = ChatGoogleGenerativeAI(
             model=GEMINI_MODEL,
             google_api_key=api_key,
-            temperature=0,  # deterministic
         )
         resp = llm.invoke(prompt)
+
         if isinstance(resp, AIMessage):
             text = resp.content if isinstance(resp.content, str) else str(resp.content)
         else:
             text = str(resp)
+
         logger.debug("plan_node LLM response received", extra={
             "node": "plan",
             "response_length": len(text)
@@ -236,10 +245,10 @@ def _maybe_refine_plan_with_llm(
             "node": "plan",
             "error": str(exc)
         }, exc_info=True)
-        # if LLM fails, just keep original plan
-        return template_id, {}
+        # 🔴 keep base params, don't return {}
+        return template_id, base_params
 
-    # Strip markdown code fences if present (```json ... ```)
+    # Strip ```json fences if present
     text_clean = text.strip()
     if text_clean.startswith("```"):
         lines = text_clean.split("\n")
@@ -257,18 +266,19 @@ def _maybe_refine_plan_with_llm(
             "error": str(e),
             "response_preview": text_clean[:200]
         })
-        return template_id, {}
+        # 🔴 keep base params, don't return {}
+        return template_id, base_params
 
-    # we still allow LLM to switch template here, but ONLY because
-    # we call this function only when we didn't lock earlier
+    # template may change, but only to known ones
     new_template_id = refined.get("template_id", template_id)
     if new_template_id not in allowed_templates:
         new_template_id = template_id
 
+    # ✅ overlay refined params on top of base params
+    merged_params: Dict[str, Any] = dict(base_params)
     new_params_raw = refined.get("params") or {}
-    new_params: Dict[str, Any] = {}
     for k, v in new_params_raw.items():
         if k in allowed_param_keys:
-            new_params[k] = v
+            merged_params[k] = v
 
-    return new_template_id, new_params
+    return new_template_id, merged_params

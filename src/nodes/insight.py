@@ -55,7 +55,7 @@ def insight_node(state: AgentState) -> AgentState:
         .replace("{{top_rows}}", json.dumps((top_preview or rows)[:5], ensure_ascii=False))
     )
 
-    api_key = config.GOOGLE_API_KEY
+    api_key = config.GEMINI_API_KEY
     if not api_key:
         # soft fallback
         if not api_key:

@@ -12,21 +12,20 @@ def test_config_loads_minimal_env(monkeypatch):
     # reload to re-evaluate module-level vars
     config = importlib.reload(importlib.import_module("src.config"))
 
-    assert config.GOOGLE_API_KEY == "fake-key"
+    assert config.GEMINI_API_KEY == "fake-key"
     assert config.GEMINI_MODEL.startswith("gemini-")
 
 
 def test_require_env_raises_when_missing(monkeypatch):
     # remove from env
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
 
     # reload so globals are re-read with empty env
     config = importlib.reload(importlib.import_module("src.config"))
 
     # extra safety: if your machine still has it somehow,
     # force the module attr to be empty so the function must raise
-    config.GOOGLE_API_KEY = ""
+    config.GEMINI_API_KEY = ""
 
     with pytest.raises(RuntimeError):
         config.require_env()

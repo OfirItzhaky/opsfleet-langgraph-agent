@@ -9,7 +9,6 @@ from src.agent_state import AgentState
 
 def test_insight_node_happy_path(monkeypatch, tmp_path):
     # set env FIRST
-    monkeypatch.setenv("GOOGLE_API_KEY", "fake")
     monkeypatch.setenv("GEMINI_API_KEY", "fake")
 
     # now reload src.config so it picks up the patched env

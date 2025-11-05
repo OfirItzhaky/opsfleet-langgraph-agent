@@ -8,18 +8,28 @@ logger = get_logger(__name__)
 def run_cli() -> None:
     setup_logging()
     graph = build_graph()
-    
+
     logger.info("CLI started", extra={"mode": "interactive"})
-    print("Opsfleet Data Agent (thelook_ecommerce). Type 'exit' to quit.\n")
+    print("\n=== Opsfleet Data Agent (thelook_ecommerce) ===")
+    print("Type 'exit' to quit at any time.\n")
+
+    # --- friendly intro for first run ---
+    print("You can ask business-style questions like:")
+    print("  • show me the top revenue products from the last 30 days")
+    print("  • which countries bought the most last month?")
+    print("  • find high value customers and tell me what they are buying\n")
+
+    first_turn = True
 
     while True:
-        user_text = input("ask> ").strip()
+        prompt = "ask> " if first_turn else "next question> "
+        user_text = input(prompt).strip()
         if user_text.lower() in {"exit", "quit"}:
             logger.info("CLI exiting", extra={"reason": "user_request"})
             print("bye.")
             break
 
-        # Start request context for tracing
+        first_turn = False
         request_id = RequestContext.start_request(user_text)
         logger.info("New query received", extra={
             "request_id": request_id,
@@ -31,20 +41,13 @@ def run_cli() -> None:
 
         try:
             result = graph.invoke(state)
-
-            output = (
-                    result.get("response")  # main field now
-                    or "No response was produced by the agent."
-            )
-            
+            output = result.get("response") or "No response was produced by the agent."
             logger.info("Query completed successfully", extra={
                 "request_id": request_id,
                 "response_length": len(output),
                 "template_used": result.get("template_id")
             })
-            
             print("\n" + output + "\n")
-            
         except Exception as exc:
             logger.error("Query failed", extra={
                 "request_id": request_id,
@@ -52,10 +55,9 @@ def run_cli() -> None:
                 "error_type": exc.__class__.__name__
             }, exc_info=True)
             print(f"error: {exc}")
-        
         finally:
-            # Clear request context
             RequestContext.clear()
+
 
 
 if __name__ == "__main__":
