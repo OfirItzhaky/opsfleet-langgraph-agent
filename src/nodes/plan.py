@@ -15,6 +15,7 @@ from src.config import GEMINI_API_KEY, GEMINI_MODEL
 
 from src import config
 from src.agent_state import AgentState
+from src.utils.llm import extract_text, strip_code_fences
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -215,15 +216,8 @@ def _maybe_refine_plan_with_llm(
         )
         resp = llm.invoke(prompt)
 
-        if isinstance(resp, AIMessage):
-            text = resp.content if isinstance(resp.content, str) else str(resp.content)
-        else:
-            text = str(resp)
+        text = extract_text(resp)
 
-        logger.debug("plan_node LLM response received", extra={
-            "node": "plan",
-            "response_length": len(text)
-        })
     except Exception as exc:
         logger.error("plan_node LLM refinement failed", extra={
             "node": "plan",
@@ -233,14 +227,7 @@ def _maybe_refine_plan_with_llm(
         return template_id, base_params
 
     # Strip ```json fences if present
-    text_clean = text.strip()
-    if text_clean.startswith("```"):
-        lines = text_clean.split("\n")
-        if lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        text_clean = "\n".join(lines)
+    text_clean = strip_code_fences(text)
 
     try:
         refined = json.loads(text_clean)

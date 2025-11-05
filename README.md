@@ -165,6 +165,7 @@ The agent will print:
 
 Besides the interactive CLI, you can run a small script that feeds the agent with ready-made queries (the same ones we used for benchmark runs).
 
+### At the bottom it prints all scenario outputs together
 ```bash
 python -m src.dev_run_scenarios
 ```
