@@ -9,6 +9,8 @@ from pathlib import Path
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import AIMessage
+
+from constants.plan_constants import ALLOWED_TEMPLATES, ALLOWED_PARAM_KEYS
 from src.config import GEMINI_API_KEY, GEMINI_MODEL
 
 from src import config
@@ -191,24 +193,6 @@ def _maybe_refine_plan_with_llm(
         logger.warning("plan_node skipping LLM refinement: no API key", extra={"node": "plan"})
         return template_id, base_params
 
-    allowed_templates = {
-        "q_customer_segments",
-        "q_top_products",
-        "q_geo_sales",
-        "q_sales_trend",
-    }
-    allowed_param_keys = {
-        "start_date",
-        "end_date",
-        "by",
-        "limit",
-        "metric",
-        "level",
-        "grain",
-        "category",
-        "countries",
-        "department",
-    }
 
     prompt_path = Path(__file__).parent.parent / "prompts" / "plan_refine.md"
     prompt_template = prompt_path.read_text(encoding="utf-8")
@@ -271,14 +255,14 @@ def _maybe_refine_plan_with_llm(
 
     # template may change, but only to known ones
     new_template_id = refined.get("template_id", template_id)
-    if new_template_id not in allowed_templates:
+    if new_template_id not in ALLOWED_TEMPLATES:
         new_template_id = template_id
 
     # ✅ overlay refined params on top of base params
     merged_params: Dict[str, Any] = dict(base_params)
     new_params_raw = refined.get("params") or {}
     for k, v in new_params_raw.items():
-        if k in allowed_param_keys:
+        if k in ALLOWED_PARAM_KEYS:
             merged_params[k] = v
 
     return new_template_id, merged_params

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import time
 import inflect
+
+from constants.intent_constants import GEO_WORDS, TREND_WORDS, PRODUCT_WORDS, SEGMENT_WORDS
 from src.agent_state import AgentState
 from src.utils.logging import get_logger
 
@@ -27,19 +29,8 @@ def intent_node(state: AgentState) -> AgentState:
 
     # geo: normalize plurals (countries -> country, cities -> city, etc.)
     normalized_tokens = {p.singular_noun(tok) or tok for tok in tokens}
-    geo_words = {
-        "country",
-        "state",
-        "city",
-        "region",
-        "geo",
-        "location",
-        "by",
-        "by country",
-        "by city",
-        "where",
-    }
-    if geo_words & normalized_tokens:
+
+    if GEO_WORDS & normalized_tokens:
         state.intent = "geo"
         state.params["intent_rule"] = "geo_keywords"
         duration_ms = (time.time() - start_time) * 1000
@@ -47,30 +38,16 @@ def intent_node(state: AgentState) -> AgentState:
             "node": "intent",
             "intent": "geo",
             "rule": "geo_keywords",
-            "matched_tokens": list(geo_words & normalized_tokens),
+            "matched_tokens": list(GEO_WORDS & normalized_tokens),
             "duration_ms": round(duration_ms, 2)
         })
         return state
 
-    # trends / time series
-    trend_words = {
-        "trend",
-        "over time",
-        "by month",
-        "by day",
-        "daily",
-        "weekly",
-        "monthly",
-        "timeseries",
-        "time series",
-        "seasonality",
-        "evolution",
-    }
-    if any(w in text for w in trend_words):
+    if any(w in text for w in TREND_WORDS):
         state.intent = "trend"
         state.params["intent_rule"] = "trend_keywords"
         duration_ms = (time.time() - start_time) * 1000
-        matched = [w for w in trend_words if w in text]
+        matched = [w for w in TREND_WORDS if w in text]
         logger.info("intent_node classified", extra={
             "node": "intent",
             "intent": "trend",
@@ -80,23 +57,12 @@ def intent_node(state: AgentState) -> AgentState:
         })
         return state
 
-    # product / catalog
-    product_words = {
-        "product",
-        "sku",
-        "top products",
-        "best sellers",
-        "bestsellers",
-        "brand",
-        "category",
-        "top items",
-        "top sku",
-    }
-    if any(w in text for w in product_words):
+
+    if any(w in text for w in PRODUCT_WORDS):
         state.intent = "product"
         state.params["intent_rule"] = "product_keywords"
         duration_ms = (time.time() - start_time) * 1000
-        matched = [w for w in product_words if w in text]
+        matched = [w for w in PRODUCT_WORDS if w in text]
         logger.info("intent_node classified", extra={
             "node": "intent",
             "intent": "product",
@@ -106,25 +72,12 @@ def intent_node(state: AgentState) -> AgentState:
         })
         return state
 
-    # customer / segmentation
-    segment_words = {
-        "customer",
-        "users",
-        "segment",
-        "segmentation",
-        "cohort",
-        "demographic",
-        "by gender",
-        "by age",
-        "by country of customer",
-        "audience",
-        "customers by",
-    }
-    if any(w in text for w in segment_words):
+
+    if any(w in text for w in SEGMENT_WORDS):
         state.intent = "segment"
         state.params["intent_rule"] = "segment_keywords"
         duration_ms = (time.time() - start_time) * 1000
-        matched = [w for w in segment_words if w in text]
+        matched = [w for w in SEGMENT_WORDS if w in text]
         logger.info("intent_node classified", extra={
             "node": "intent",
             "intent": "segment",
