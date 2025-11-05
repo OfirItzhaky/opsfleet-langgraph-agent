@@ -36,7 +36,7 @@ The LangGraph E-commerce Agent converts a natural-language business query into s
 The following sequence diagram shows how a single CLI question is processed end-to-end.
 
 <p align="center">
-  <img src="docs/sequence.png" alt="Request Sequence Diagram" width="600"/>
+  <img src="sequence.png" alt="Request Sequence Diagram" width="600"/>
   <br>
   <em>Request Sequence (scaled view)</em>
 </p>
