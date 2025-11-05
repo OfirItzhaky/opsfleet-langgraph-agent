@@ -36,6 +36,8 @@ The goal is to show *agentic structure* (LangGraph), *safe data access* (templat
 ## Architecture (high level)
 The agent is built as a **deterministic LangGraph**:
 
+For a visual overview of the architecture, see [`docs/architecture.md`](docs/architecture.md) or open `docs/architecture.png`._
+
 ```mermaid
 flowchart TD
     A[CLI / User Query] --> B[intent_node]
@@ -145,7 +147,7 @@ Run:
 python -m src.main
 ```
 
-Then type one of these:
+Then type a question here are a fwe examples:
 
 - `show me the top revenue products from the last 30 days`
 - `which countries bought the most last month?`
@@ -164,9 +166,38 @@ The agent will print:
 Besides the interactive CLI, you can run a small script that feeds the agent with ready-made queries (the same ones we used for benchmark runs).
 
 ```bash
-python -m src.dev_scenarios
+python -m src.dev_run_scenarios
 ```
+## Configuration (models, env, BigQuery)
 
+All runtime configuration is centralized in `src/config.py` so you don’t have to change the nodes.
+
+Key things you can control:
+
+1. **LLM model**
+   - By default we use a Gemini model (e.g. `gemini-1.5-flash`) for intent, plan, and insights.
+   - You can change the model name in `src/config.py` (or via env var if you prefer).
+   - If you want to use a Pro / higher-tier model (e.g. `gemini-1.5-pro`), you must set an API key that actually has usage enabled.
+
+2. **API key**
+   - The agent expects:
+     ```bash
+     export GEMINI_API_KEY="YOUR_KEY_HERE"
+     ```
+   - If the variable is missing, `config.py` should raise/print a clear error so you know why LLM calls fail.
+
+3. **BigQuery credentials**
+   - We rely on Google’s Application Default Credentials (ADC):
+     ```bash
+     gcloud auth application-default login
+     ```
+   - `src/bq.py` reads those credentials automatically; no hardcoded keys are stored in the repo.
+
+4. **Other tunables**
+   - default date windows (30d, 60d, 90d, 365d)
+   - default LIMIT for queries
+   - these are set in the plan/templates so you can reduce BigQuery costs if needed
+- 
 ## How It Works (Detailed Flow)
 
 1. **User input** → new `AgentState` is created.
