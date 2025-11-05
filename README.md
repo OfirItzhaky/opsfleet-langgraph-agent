@@ -268,11 +268,11 @@ From benchmark runs (~40s per full scenario):
 2. Add smarter parameter extraction from user text (e.g. "last quarter", "US vs Canada").
 3. Merge plan + insight for trivial queries to reduce cost/time.
 4. Add more templates for RFM & cohort analysis.
-5. Standardize `state.error` and CLI display for graceful failures.
-6. Add `src/sanity.py` to check credentials and env automatically.
+5. use cached memory to not call llm and related to cross quries inthe same chat more efficiently
+6. Add more tools the agent cal call using functions not just SQL for complex predictions
+ ### And also:
+7. Add more tests to improve coverage
+8. Enhance and optimize keywords in config fore more flexibilty in intent node keeping deterministic but flexible UX
 
 ---
-
-## License / Submission
-This repository includes source code, documentation (README + architecture diagram), and benchmark validation for submission to Opsfleet.
 
