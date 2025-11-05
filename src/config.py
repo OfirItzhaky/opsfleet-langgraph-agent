@@ -10,6 +10,12 @@ GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID") or None
 GEMINI_MODEL = "gemini-2.5-flash"
 # Can use gemini-2.5-pro assuming API KEY with usage allowance
 
+# Setting for either determinsitic node or dynamic using llm
+INTENT_MODE  = "Deterministic"
+
+# Dynamic  - choose to use llm in the intent
+
+
 # Gemini pricing per 1M tokens
 # Source: https://ai.google.dev/pricing
 MODEL_PRICING = {

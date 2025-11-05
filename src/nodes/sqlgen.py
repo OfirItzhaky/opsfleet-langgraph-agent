@@ -93,6 +93,10 @@ def sqlgen_node(state: AgentState) -> AgentState:
             limit=limit or 200,
         )
 
+    elif state.template_id == "raw_sql":
+        state.sql = state.params["raw_sql"]
+        return state
+
     else:
         # should not happen due to registry check
         raise ValueError(f"sqlgen_node: no handler for template_id '{template_id}'")

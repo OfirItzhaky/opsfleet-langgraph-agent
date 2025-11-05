@@ -107,11 +107,9 @@ TABLES: Dict[str, Table] = {
 # ---- Canonical join paths (whitelisted only) ----
 # Each tuple is: (left_table, right_table, left_key, right_key)
 JOINS: List[Tuple[str, str, str, str]] = [
-    # orders → users
     ("orders", "users", "user_id", "id"),
-    # order_items → orders
     ("order_items", "orders", "order_id", "order_id"),
-    # order_items → products
+    ("order_items", "users", "user_id", "id"),
     ("order_items", "products", "product_id", "id"),
 ]
 

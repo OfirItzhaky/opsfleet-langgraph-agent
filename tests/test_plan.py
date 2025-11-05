@@ -1,13 +1,22 @@
+import json
 
-import src.nodes.plan as plan_mod
-import types
-from langchain_core.messages import AIMessage
-import src.nodes.plan as plan_mod
 from src.agent_state import AgentState
-from src.nodes.plan import plan_node, DEFAULT_START, DEFAULT_END
+import src.nodes.plan as plan_router
+
+# try to import defaults from the deterministic module if you split it
+try:
+    from src.plan_deterministic import DEFAULT_START, DEFAULT_END
+except ImportError:
+    from src.nodes.plan import DEFAULT_START, DEFAULT_END
+
+
+# ============================================================
+# DETERMINISTIC TESTS (your originals)
+# ============================================================
+
 def test_plan_for_segment():
     s = AgentState(user_query="segment customers", intent="segment")
-    out = plan_node(s)
+    out = plan_router.plan_node(s)
     assert out.template_id == "q_customer_segments"
     assert out.params["by"] == "country"
     assert out.params["start_date"] == DEFAULT_START
@@ -17,7 +26,7 @@ def test_plan_for_segment():
 
 def test_plan_for_product():
     s = AgentState(user_query="top products", intent="product")
-    out = plan_node(s)
+    out = plan_router.plan_node(s)
     assert out.template_id == "q_top_products"
     assert out.params["metric"] == "revenue"
     assert out.params["limit"] == 20
@@ -25,7 +34,7 @@ def test_plan_for_product():
 
 def test_plan_for_trend_default():
     s = AgentState(user_query="sales trend", intent="trend")
-    out = plan_node(s)
+    out = plan_router.plan_node(s)
     assert out.template_id == "q_sales_trend"
     assert out.params["grain"] == "month"
     assert out.params["limit"] == 1000
@@ -33,7 +42,7 @@ def test_plan_for_trend_default():
 
 def test_plan_for_geo():
     s = AgentState(user_query="sales by country", intent="geo")
-    out = plan_node(s)
+    out = plan_router.plan_node(s)
     assert out.template_id == "q_geo_sales"
     assert out.params["level"] == "country"
     assert out.params["limit"] == 200
@@ -41,61 +50,7 @@ def test_plan_for_geo():
 
 def test_plan_fallback_when_intent_missing():
     s = AgentState(user_query="just show me something")
-    out = plan_node(s)
-    # falls back to trend
-    assert out.template_id == "q_sales_trend"
-    assert out.params["start_date"] == DEFAULT_START
-    assert out.params["end_date"] == DEFAULT_END
-
-def test_plan_preserves_existing_params():
-    s = AgentState(user_query="top products", intent="product", params={"limit": 5})
-    out = plan_node(s)
-    # our plan sets limit=20, so it should overwrite
-    assert out.params["limit"] == 20
-
-# tests/test_plan.py
-from src.nodes.plan import plan_node, DEFAULT_START, DEFAULT_END, _maybe_refine_plan_with_llm
-from src.agent_state import AgentState
-import types
-
-
-def test_plan_for_segment():
-    s = AgentState(user_query="segment customers", intent="segment")
-    out = plan_node(s)
-    assert out.template_id == "q_customer_segments"
-    assert out.params["by"] == "country"
-    assert out.params["start_date"] == DEFAULT_START
-    assert out.params["end_date"] == DEFAULT_END
-    assert out.params["limit"] == 100
-
-
-def test_plan_for_product():
-    s = AgentState(user_query="top products", intent="product")
-    out = plan_node(s)
-    assert out.template_id == "q_top_products"
-    assert out.params["metric"] == "revenue"
-    assert out.params["limit"] == 20
-
-
-def test_plan_for_trend_default():
-    s = AgentState(user_query="sales trend", intent="trend")
-    out = plan_node(s)
-    assert out.template_id == "q_sales_trend"
-    assert out.params["grain"] == "month"
-    assert out.params["limit"] == 1000
-
-
-def test_plan_for_geo():
-    s = AgentState(user_query="sales by country", intent="geo")
-    out = plan_node(s)
-    assert out.template_id == "q_geo_sales"
-    assert out.params["level"] == "country"
-    assert out.params["limit"] == 200
-
-
-def test_plan_fallback_when_intent_missing():
-    s = AgentState(user_query="just show me something")
-    out = plan_node(s)
+    out = plan_router.plan_node(s)
     # falls back to trend
     assert out.template_id == "q_sales_trend"
     assert out.params["start_date"] == DEFAULT_START
@@ -104,13 +59,19 @@ def test_plan_fallback_when_intent_missing():
 
 def test_plan_preserves_existing_params():
     s = AgentState(user_query="top products", intent="product", params={"limit": 5})
-    out = plan_node(s)
+    out = plan_router.plan_node(s)
     # our plan sets limit=20, so it should overwrite
     assert out.params["limit"] == 20
 
+
+# ============================================================
+# DETERMINISTIC LLM REFINE (call deterministic module directly)
+# ============================================================
 
 def test_plan_llm_refine_for_long_query(monkeypatch):
-    # long query → should trigger refine
+    # this helper lives in the deterministic planner, not the router
+    import src.plan_deterministic as plan_det
+
     state = AgentState(
         user_query=(
             "show me sales by country for the last 180 days but focus on top "
@@ -119,9 +80,9 @@ def test_plan_llm_refine_for_long_query(monkeypatch):
         intent="geo",
     )
 
-    # make the prompt loader return a fixed template (avoid filesystem)
+    # mock prompt file read
     monkeypatch.setattr(
-        plan_mod.Path,
+        plan_det.Path,
         "read_text",
         lambda self, encoding="utf-8": (
             "You may ONLY use these template ids: q_customer_segments, q_top_products, "
@@ -132,12 +93,13 @@ def test_plan_llm_refine_for_long_query(monkeypatch):
         ),
     )
 
-    # fake LLM that returns the refined plan
+    # fake LLM that returns refined params
     class FakeLLM:
         def __init__(self, model, google_api_key):
             pass
 
         def invoke(self, _):
+            from langchain_core.messages import AIMessage
             return AIMessage(
                 content=(
                     '{'
@@ -153,16 +115,13 @@ def test_plan_llm_refine_for_long_query(monkeypatch):
             )
 
     monkeypatch.setenv("GEMINI_API_KEY", "fake")
-    monkeypatch.setattr(plan_mod, "ChatGoogleGenerativeAI", FakeLLM)
+    monkeypatch.setattr(plan_det, "ChatGoogleGenerativeAI", FakeLLM)
 
-    # base plan before refine (what the node would have produced)
     base_template = "q_geo_sales"
     base_params = {"limit": 200}
 
-    new_template, new_params = _maybe_refine_plan_with_llm(
-        state,
-        base_template,
-        base_params,
+    new_template, new_params = plan_det._maybe_refine_plan_with_llm(
+        state, base_template, base_params
     )
 
     assert new_template == "q_geo_sales"
@@ -170,3 +129,93 @@ def test_plan_llm_refine_for_long_query(monkeypatch):
     assert new_params["start_date"] == "DATE_SUB(CURRENT_DATE(), INTERVAL 180 DAY)"
     assert new_params["end_date"] == "CURRENT_DATE()"
     assert new_params["level"] == "country"
+
+
+# ============================================================
+# DYNAMIC TESTS (call dynamic planner directly)
+# ============================================================
+
+def test_plan_dynamic_template_mode(monkeypatch):
+    """
+    Call src.plan_dynamic.dynamic_plan directly and mock the LLM so it returns
+    a template-style plan.
+    """
+    import src.plan_dynamic as plan_dyn
+
+    # mock prompt file read
+    monkeypatch.setattr(
+        plan_dyn.Path,
+        "read_text",
+        lambda self, encoding="utf-8": "User: {{user_query}}\nSchema:\n{{schema}}\n",
+    )
+
+    # fake LLM to return template JSON
+    class FakeLLM:
+        def __init__(self, model, google_api_key):
+            pass
+
+        def invoke(self, _prompt: str):
+            class Msg:
+                content = json.dumps({
+                    "mode": "template",
+                    "template_id": "q_geo_sales",
+                    "params": {
+                        "level": "country",
+                        "limit": 123,
+                        "start_date": "DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)",
+                        "end_date": "CURRENT_DATE()",
+                        "sort_dir": "ASC"
+                    }
+                })
+            return Msg()
+
+    monkeypatch.setattr(plan_dyn, "ChatGoogleGenerativeAI", FakeLLM)
+    monkeypatch.setattr(plan_dyn, "extract_text", lambda resp: resp.content)
+    monkeypatch.setattr(plan_dyn, "strip_code_fences", lambda s: s)
+
+    s = AgentState(user_query="which countries bought the least last week?", intent="geo")
+    out = plan_dyn.dynamic_plan(s)
+
+    assert out.template_id == "q_geo_sales"
+    assert out.params["level"] == "country"
+    # assuming ALLOWED_PARAM_KEYS in your constants includes "limit"
+    assert out.params["limit"] == 123
+    assert out.params["locked_template"] is True
+
+
+def test_plan_dynamic_sql_mode(monkeypatch):
+    """
+    Call src.plan_dynamic.dynamic_plan directly and mock the LLM so it returns raw SQL.
+    """
+    import src.plan_dynamic as plan_dyn
+
+    # mock prompt file read
+    monkeypatch.setattr(
+        plan_dyn.Path,
+        "read_text",
+        lambda self, encoding="utf-8": "User: {{user_query}}\nSchema:\n{{schema}}\n",
+    )
+
+    class FakeLLM:
+        def __init__(self, model, google_api_key):
+            pass
+
+        def invoke(self, _prompt: str):
+            class Msg:
+                content = json.dumps({
+                    "mode": "sql",
+                    "sql": "SELECT 1 AS x LIMIT 10",
+                    "reason": "simple test"
+                })
+            return Msg()
+
+    monkeypatch.setattr(plan_dyn, "ChatGoogleGenerativeAI", FakeLLM)
+    monkeypatch.setattr(plan_dyn, "extract_text", lambda resp: resp.content)
+    monkeypatch.setattr(plan_dyn, "strip_code_fences", lambda s: s)
+
+    s = AgentState(user_query="ad-hoc query please", intent="geo")
+    out = plan_dyn.dynamic_plan(s)
+
+    assert out.template_id == "raw_sql"
+    assert out.params["raw_sql"] == "SELECT 1 AS x LIMIT 10"
+    assert out.params["locked_template"] is True
