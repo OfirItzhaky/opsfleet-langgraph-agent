@@ -272,7 +272,7 @@ From benchmark runs (~40s per full scenario):
 6. Add more tools the agent cal call using functions not just SQL for complex predictions
  ### And also:
 7. Add more tests to improve coverage
-8. Enhance and optimize keywords in config fore more flexibilty in intent node keeping deterministic but flexible UX
+8. Add component testing for quality and enhance and optimize keywords in config fore more flexibilty in intent node keeping deterministic but flexible UX
 
 ---
 
