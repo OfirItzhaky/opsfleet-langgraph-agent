@@ -45,7 +45,9 @@ def run_cli() -> None:
             logger.info("Query completed successfully", extra={
                 "request_id": request_id,
                 "response_length": len(output),
-                "template_used": result.get("template_id")
+                "template_used": result.get("template_id"),
+                "total_llm_cost_usd": round(result.get("total_llm_cost", 0.0), 6),
+                "llm_calls_count": result.get("llm_calls_count", 0)
             })
             print("\n" + output + "\n")
         except Exception as exc:

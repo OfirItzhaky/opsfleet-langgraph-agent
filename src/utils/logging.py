@@ -104,10 +104,36 @@ class ConsoleFormatter(logging.Formatter):
             if 'template_id' in key_fields:
                 parts.append(f" → {key_fields['template_id']}")
                 del key_fields['template_id']
+            
+            # Special handling for LLM cost tracking
+            if 'cost_usd' in key_fields or 'total_tokens' in key_fields:
+                cost_parts = []
+                if 'total_tokens' in key_fields:
+                    cost_parts.append(f"{key_fields['total_tokens']} tokens")
+                    del key_fields['total_tokens']
+                if 'input_tokens' in key_fields:
+                    del key_fields['input_tokens']  # Don't show separately
+                if 'output_tokens' in key_fields:
+                    del key_fields['output_tokens']  # Don't show separately
+                if 'cost_usd' in key_fields:
+                    cost_parts.append(f"${key_fields['cost_usd']:.6f}")
+                    del key_fields['cost_usd']
+                if cost_parts:
+                    parts.append(f" [{', '.join(cost_parts)}]")
+            
+            # Special handling for request-level cost summary
+            if 'total_llm_cost_usd' in key_fields:
+                parts.append(f" [Total LLM cost: ${key_fields['total_llm_cost_usd']:.6f}")
+                if 'llm_calls_count' in key_fields:
+                    parts.append(f", {key_fields['llm_calls_count']} calls]")
+                    del key_fields['llm_calls_count']
+                else:
+                    parts.append("]")
+                del key_fields['total_llm_cost_usd']
                 
             # Add remaining fields if any (condensed)
-            if key_fields and len(key_fields) <= 3:
-                extras = ", ".join(f"{k}={self._format_value(v)}" for k, v in list(key_fields.items())[:3])
+            if key_fields and len(key_fields) <= 5:
+                extras = ", ".join(f"{k}={self._format_value(v)}" for k, v in list(key_fields.items())[:5])
                 parts.append(f" | {extras}")
         
         return "".join(parts)

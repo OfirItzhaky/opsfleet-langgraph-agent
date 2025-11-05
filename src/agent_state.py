@@ -30,6 +30,10 @@ class AgentState(BaseModel):
     actions: List[str] = Field(default_factory=list, description="Suggested next actions")
     followups: List[str] = Field(default_factory=list, description="Suggested follow-up questions or prompts")
     response: Optional[str] = Field(None, description="Formatted text to print in CLI")
+    
+    # Cost tracking
+    total_llm_cost: float = Field(0.0, description="Cumulative LLM cost for this request in USD")
+    llm_calls_count: int = Field(0, description="Number of LLM calls made in this request")
 
     def get(self, key: str, default=None):
         """Allow dict-like safe access for legacy code."""

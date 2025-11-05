@@ -259,7 +259,7 @@ From benchmark runs (~40s per full scenario):
 - Lightweight results node to keep latency low.
 - No chart generation (not required by task).
 - Benchmarks validate 7 scenarios successfully.
-
+- Logs include Cost logged for each call it uses the LLM
 ---
 
 ## Next Improvements

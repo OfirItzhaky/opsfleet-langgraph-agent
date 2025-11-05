@@ -210,13 +210,31 @@ def _maybe_refine_plan_with_llm(
             "model": GEMINI_MODEL,
             "prompt_length": len(prompt)
         })
+        import time
+        llm_start = time.time()
         llm = ChatGoogleGenerativeAI(
             model=GEMINI_MODEL,
             google_api_key=api_key,
         )
         resp = llm.invoke(prompt)
+        llm_duration_ms = (time.time() - llm_start) * 1000
 
         text = extract_text(resp)
+        
+        # Log LLM usage and cost
+        from src.utils.llm import log_llm_usage
+        cost = log_llm_usage(
+            logger=logger,
+            node_name="plan",
+            resp=resp,
+            model=GEMINI_MODEL,
+            duration_ms=llm_duration_ms,
+            extra_context={"response_length": len(text)}
+        )
+        
+        # Track cumulative cost in state
+        state.total_llm_cost += cost
+        state.llm_calls_count += 1
 
     except Exception as exc:
         logger.error("plan_node LLM refinement failed", extra={

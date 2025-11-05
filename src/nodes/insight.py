@@ -81,11 +81,20 @@ def insight_node(state: AgentState) -> AgentState:
         else:
             text = str(resp)
         
-        logger.info("insight_node LLM response received", extra={
-            "node": "insight",
-            "llm_duration_ms": round(llm_duration_ms, 2),
-            "response_length": len(text)
-        })
+        # Log LLM usage and cost
+        from src.utils.llm import log_llm_usage
+        cost = log_llm_usage(
+            logger=logger,
+            node_name="insight",
+            resp=resp,
+            model=INSIGHTS_MODEL,
+            duration_ms=llm_duration_ms,
+            extra_context={"response_length": len(text)}
+        )
+        
+        # Track cumulative cost in state
+        state.total_llm_cost += cost
+        state.llm_calls_count += 1
     except Exception as exc:
         logger.error("insight_node LLM call failed", extra={
             "node": "insight",

@@ -45,7 +45,9 @@ def run_scenarios():
                 "template_id": template_id,
                 "intent": out.get("intent"),
                 "response_length": len(response_text),
-                "request_id": request_id
+                "request_id": request_id,
+                "total_llm_cost_usd": round(out.get("total_llm_cost", 0.0), 6),
+                "llm_calls_count": out.get("llm_calls_count", 0)
             })
 
             # Still print for quick visual feedback
