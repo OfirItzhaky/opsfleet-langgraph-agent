@@ -10,3 +10,5 @@ pytest>=7.0.0
 pytest-cov>=4.1.0
 # Lightweight plural/singular handling for intent classification
 inflect==7.5.0
+#for sql guardrails
+sqlglot>=13.0.0

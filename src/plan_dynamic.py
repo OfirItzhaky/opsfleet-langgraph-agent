@@ -7,10 +7,11 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 
 from src.agent_state import AgentState
 from src.config import GEMINI_API_KEY, GEMINI_MODEL
-from constants.plan_constants import ALLOWED_TEMPLATES, ALLOWED_PARAM_KEYS
+from constants.plan_constants import ALLOWED_TEMPLATES, ALLOWED_PARAM_KEYS  # now used
 from src.schema import TABLES, JOINS
 from src.utils.logging import get_logger
 from src.utils.llm import extract_text, strip_code_fences
+from src.utils.sql_guardrails import validate_dynamic_sql  # NEW
 
 logger = get_logger(__name__)
 
@@ -50,48 +51,89 @@ def dynamic_plan(state: AgentState) -> AgentState:
             "error": str(e),
             "response_preview": text_clean[:200],
         })
-        state.template_id = "q_sales_trend"
-        state.params.update({
-            "start_date": "DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY)",
-            "end_date": "CURRENT_DATE()",
-            "grain": "month",
-            "locked_template": True,
+        return _fallback_to_trend(state, days=90)
+
+    mode = (data.get("mode") or "").lower()
+
+    # ------------------------------------------------------------------
+    # 1) template mode → only accept known templates
+    # ------------------------------------------------------------------
+    if mode == "template":
+        template_id = data.get("template_id")
+        params = data.get("params") or {}
+
+        if template_id not in ALLOWED_TEMPLATES:
+            logger.warning("dynamic_plan: LLM returned template %s not in allowed list, fallback", template_id)
+            return _fallback_to_trend(state, days=30)
+
+        # keep only allowed param keys
+        clean_params = {}
+        for k, v in params.items():
+            if k in ALLOWED_PARAM_KEYS:
+                clean_params[k] = v
+
+        state.template_id = template_id
+        state.params.update(clean_params)
+        state.params["locked_template"] = True
+
+        duration_ms = (time.time() - start) * 1000
+        logger.info("dynamic_plan completed (template mode)", extra={
+            "node": "plan_dynamic",
+            "duration_ms": round(duration_ms, 2),
+            "mode": "template",
+            "template_id": template_id,
         })
         return state
 
-    if data.get("mode") == "none":
-        # graceful fail
-        state.template_id = "q_sales_trend"
-        state.params.update({
-            "start_date": "DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)",
-            "end_date": "CURRENT_DATE()",
-            "grain": "month",
-            "locked_template": True,
+    # ------------------------------------------------------------------
+    # 2) sql mode → validate with utils
+    # ------------------------------------------------------------------
+    if mode == "sql":
+        raw_sql = (data.get("sql") or "").strip()
+
+        # build allowed tables list from schema
+        allowed_tables = {name.lower() for name in TABLES.keys()}
+
+        ok, info = validate_dynamic_sql(
+            raw_sql,
+            allowed_tables=allowed_tables,
+            max_limit=2000,
+        )
+        if not ok:
+            logger.warning("dynamic_plan: sql failed guardrails, falling back to trend", extra={
+                "reason": info.get("reason"),
+                "info": info,
+            })
+            return _fallback_to_trend(state, days=30)
+
+        # success path
+        state.template_id = "raw_sql"
+        state.params["raw_sql"] = raw_sql
+        state.params["locked_template"] = True
+
+        duration_ms = (time.time() - start) * 1000
+        logger.info("dynamic_plan completed", extra={
+            "node": "plan_dynamic",
+            "duration_ms": round(duration_ms, 2),
+            "mode": "sql",
+            "tables": info.get("tables"),
+            "limit": info.get("limit"),
         })
         return state
 
-    raw_sql = (data.get("sql") or "").strip()
-    if not _sql_passes_guardrails(raw_sql):
-        logger.warning("dynamic_plan: sql failed guardrails, falling back to trend")
-        state.template_id = "q_sales_trend"
-        state.params.update({
-            "start_date": "DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)",
-            "end_date": "CURRENT_DATE()",
-            "grain": "month",
-            "locked_template": True,
-        })
-        return state
+    # ------------------------------------------------------------------
+    # 3) mode == none or unknown → fallback
+    # ------------------------------------------------------------------
+    return _fallback_to_trend(state, days=30)
 
-    # ✅ the only success path in dynamic mode
-    state.template_id = "raw_sql"
-    state.params["raw_sql"] = raw_sql
-    state.params["locked_template"] = True
 
-    duration_ms = (time.time() - start) * 1000
-    logger.info("dynamic_plan completed", extra={
-        "node": "plan_dynamic",
-        "duration_ms": round(duration_ms, 2),
-        "mode": "sql",
+def _fallback_to_trend(state: AgentState, days: int = 30) -> AgentState:
+    state.template_id = "q_sales_trend"
+    state.params.update({
+        "start_date": f"DATE_SUB(CURRENT_DATE(), INTERVAL {days} DAY)",
+        "end_date": "CURRENT_DATE()",
+        "grain": "month",
+        "locked_template": True,
     })
     return state
 
@@ -112,29 +154,3 @@ def _build_schema_summary() -> str:
         "\nAlways include a LIMIT (e.g. 200)."
     )
     return "\n".join(lines)
-
-
-def _sql_passes_guardrails(sql: str) -> bool:
-    """
-    Very dumb guardrail: check tables and LIMIT.
-    You can later replace with sqlglot to properly parse.
-    """
-    if not sql:
-        return False
-
-    lowered = sql.lower()
-    # must reference only our 4 tables
-    allowed_tables = {"orders", "order_items", "products", "users"}
-    for t in allowed_tables:
-        pass  # just to show intent
-
-    # hard check: must have LIMIT
-    if "limit" not in lowered:
-        return False
-
-    # hard check: must only mention known tables
-    bad_words = ["delete", "update", "insert"]
-    if any(b in lowered for b in bad_words):
-        return False
-
-    return True
