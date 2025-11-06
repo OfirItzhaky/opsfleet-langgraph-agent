@@ -44,9 +44,16 @@ def respond_node(state: AgentState) -> AgentState:
         if not followups:
             followups = insights.get("followups") or []
         insights = bullets
+    guard_blocked = state.params.get("dynamic_guardrail_blocked")
+    guard_reason = state.params.get("dynamic_guardrail_reason") or "blocked_by_guardrail"
 
-    parts: List[str] = []
+    parts =  []
 
+    if guard_blocked:
+        parts.append(
+            f"⚠️ Dynamic SQL was blocked by guardrails ({guard_reason}). "
+            "Showing a safe default view instead.\n"
+        )
     if insights:
         parts.append(_format_bullets(insights, "Insights:"))
     else:

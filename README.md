@@ -74,9 +74,10 @@ The agent now supports **two planning strategies**, controlled at runtime (e.g. 
    - best for common reporting questions and for the original assignment requirements.
 
 2. **Dynamic (LLM-generated SQL)**  
-   - intent → `dynamic_plan(...)` → Gemini returns a JSON plan with `mode: "sql"` and a full SELECT  
-   - we run guardrails (must have `LIMIT`, must reference the 4 allowed tables, no DML)  
-   - if OK → we set `template_id="raw_sql"` and pass the SQL forward  
+   - intent → `dynamic_plan(...)` → Gemini returns a JSON plan with `mode: "sql"` and a full SELECT
+   - we run guardrails that detect malicious or injection-like SQL, blocking DML/DDL and unsafe constructs
+   - if OK → we set `template_id="raw_sql"` and pass the SQL forward 
+   - Additionally, the LLM is prompted with a strict table whitelist (orders, order_items, products, users) and predefined join paths, so even before validation, generation is restricted to the expected schema.
    - if NOT OK → we fall back to the deterministic trend template (`q_sales_trend`) and mark `locked_template=true`.
 
 The rest of the graph (**sqlgen → exec → results → insight → respond**) stays the same in both modes. The only difference is **how** the SQL is decided in `plan_node`.
@@ -269,7 +270,9 @@ Typical tests:
 
 - **BigQuery errors** → handled with try/except to avoid crashes and print friendly messages.
 - **LLM failures** → partial data can still flow to response node.
-- **SQL guardrails** → queries are built from templates, not arbitrary text.
+- **SQL guardrails** →
+  - deterministic path: queries are built from templates;
+  - dynamic path: LLM SQL is checked for obviously malicious patterns and otherwise we alert the user for suspicious query.
 
 ---
 
@@ -288,21 +291,22 @@ It also:
 - Exec + results + insight timing stays the same for both modes.
 
 ---
-## Security Considerations
+### Security Considerations
 
-This project has two planning modes:
+This project runs in two planning modes:
 
-- **Deterministic** → SQL comes from fixed templates → low risk.
-- **Dynamic** → SQL comes from an LLM → treated as untrusted.
+- **Deterministic mode** → SQL is rendered from fixed, local templates → low risk by design.
+- **Dynamic mode** → SQL is produced by an LLM → we treat that SQL as untrusted.
 
-For dynamic mode we added:
-1. parser-based validation (sqlglot) before execution,
-2. table whitelist (`orders`, `order_items`, `products`, `users`),
-3. required `LIMIT` with max,
-4. DML blacklist,
-5. deterministic fallback (`q_sales_trend`) on any violation.
+For dynamic mode we currently apply **lightweight regex-based guardrails**:
 
-In other words: dynamic ≠ free-form SQL.
+1. We block obviously destructive statements (`insert`, `update`, `delete`, `drop`, `alter`, etc.).
+2. We detect multi-statement or suspicious payloads (e.g., `;--`, block comments, or multiple semicolons).
+3. When a query looks unsafe, we **alert the user** in the final response instead of executing it.
+4. We also constrain the model at the prompt level to only use the four allowed tables (orders, order_items, products, users) and their safe join paths. This ensures that even before validation, the LLM operates within known schema boundaries.
+So: **dynamic ≠ free-for-all SQL**, but it’s a *light* guard, intended for this assignment.  
+For a production setup, see “Next Improvements” below (server-side allowlist, AST-level validation, per-table limits).
+
 
 ## Design Decisions / Highlights
 

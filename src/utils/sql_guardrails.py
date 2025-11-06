@@ -1,128 +1,62 @@
 # src/utils/sql_guardrails.py
-from typing import Tuple, Optional, Set, Dict, Any
+from typing import Tuple, Dict, Any
 import logging
-
-from sqlglot import parse_one, exp
+import re
 
 logger = logging.getLogger(__name__)
 
-# sensible defaults you can import from config instead
-DEFAULT_ALLOWED_TABLES: Set[str] = {"orders", "order_items", "products", "users"}
-DEFAULT_FORBIDDEN_KEYWORDS = {"insert", "update", "delete", "drop", "alter", "create", "merge", "truncate"}
-DEFAULT_MAX_LIMIT = 10000  # adjust to your cost appetite
+# words/constructs we never want to see from the LLM
+MALICIOUS_PATTERNS = [
+    r"\binsert\b",
+    r"\bupdate\b",
+    r"\bdelete\b",
+    r"\bdrop\b",
+    r"\balter\b",
+    r"\btruncate\b",
+    r"\bcreate\b",
+    r"\bmerge\b",
+    r"\bgrant\b",
+    r"\brevoke\b",
+]
+
+# things that often signal “more than one statement” or hidden payload
+SUSPICIOUS_PATTERNS = [
+    r";\s*--",     # statement terminator + comment
+    r";\s*$",      # trailing semicolon (we can allow but flag)
+    r"/\*.*?\*/",  # block comments
+]
 
 
-def _extract_table_names(tree: exp.Expression) -> Set[str]:
-    """Return the set of plain table names (last identifier) referenced in the AST."""
-    tables = set()
-    for t in tree.find_all(exp.Table):
-        # t.this can be Identifier or a dotted path; get last part
-        try:
-            name_parts = [p.name for p in t.find_all(exp.Identifier)]
-            if name_parts:
-                tables.add(name_parts[-1].lower())
-        except Exception:
-            continue
-    return tables
-
-
-def _extract_limit_value(tree: exp.Expression) -> Optional[int]:
-    """Return numeric LIMIT if present and is a literal integer, otherwise None."""
-    lim = tree.find(exp.Limit)
-    if not lim:
-        return None
-    # sqlglot represents LIMIT as exp.Limit(this=exp.Literal(10)) in many cases
-    val = None
-    try:
-        # in some dialect forms limit.this may be a numeric literal expression
-        lit = lim.this
-        if isinstance(lit, exp.Literal):
-            val = int(lit.name)
-    except Exception:
-        val = None
-    return val
-
-
-def _extract_column_names(tree: exp.Expression) -> Set[str]:
-    """Collect simple column identifiers used in SELECT / WHERE / GROUP BY etc."""
-    cols = set()
-    for c in tree.find_all(exp.Column):
-        try:
-            # column could be table.col or just col; take last identifier
-            idents = [p.name for p in c.find_all(exp.Identifier)]
-            if idents:
-                cols.add(idents[-1].lower())
-        except Exception:
-            continue
-    return cols
-
-
-def validate_dynamic_sql(
-    sql: str,
-    allowed_tables: Set[str] = DEFAULT_ALLOWED_TABLES,
-    max_limit: int = DEFAULT_MAX_LIMIT,
-    forbidden_keywords: Set[str] = DEFAULT_FORBIDDEN_KEYWORDS,
-    allowed_columns: Optional[Set[str]] = None,
-) -> Tuple[bool, Dict[str, Any]]:
+def validate_dynamic_sql(sql: str) -> Tuple[bool, Dict[str, Any]]:
     """
-    Parse and validate an LLM-generated SQL string.
-    Returns (ok: bool, info: dict). If ok is False, info contains 'reason'.
-    If ok is True, info contains metadata: {"tables": [...], "limit": int, "columns": [...]}.
-    """
+    Very lightweight guard:
+    - reject obvious DML / DDL / privilege statements
+    - reject clearly suspicious multi-statement/comment payloads
+    - otherwise accept
 
-    sql_small = (sql or "").strip()
-    if not sql_small:
+    Returns (ok, info)
+    ok=False → info["reason"] tells you why.
+    """
+    s = (sql or "").strip()
+    if not s:
         return False, {"reason": "empty_sql"}
 
-    lowered = sql_small.lower()
-    # quick check for destructive keywords before trying to parse
-    if any(k in lowered for k in forbidden_keywords):
-        return False, {"reason": "forbidden_keyword_detected"}
+    lowered = s.lower()
 
-    # Parse with sqlglot – try BigQuery first, then fall back to ANSI for simple queries
-    try:
-        tree = parse_one(sql_small, read="bigquery")
-    except Exception as e_bigquery:
-        logger.warning("sql_guardrails: bigquery parse error, trying ansi", exc_info=True)
-        try:
-            tree = parse_one(sql_small, read="ansi")
-        except Exception as e_ansi:
-            logger.warning("sql_guardrails: ansi parse error too", exc_info=True)
-            return False, {
-                "reason": "parse_error",
-                "detail": f"bigquery: {str(e_bigquery)}; ansi: {str(e_ansi)}",
-            }
+    # 1) hard-block obviously destructive stuff
+    for pattern in MALICIOUS_PATTERNS:
+        if re.search(pattern, lowered):
+            return False, {"reason": "forbidden_keyword_detected", "pattern": pattern}
 
-    # Extract and validate tables
-    tables = _extract_table_names(tree)
-    if not tables:
-        return False, {"reason": "no_table_found"}
-    unknown_tables = {t for t in tables if t not in allowed_tables}
-    if unknown_tables:
-        return False, {"reason": "unknown_tables", "tables": list(unknown_tables)}
+    # 2) soft-block common injection-ish shapes
+    for pattern in SUSPICIOUS_PATTERNS:
+        if re.search(pattern, s, flags=re.DOTALL):
+            return False, {"reason": "suspicious_construct", "pattern": pattern}
 
-    # Limit checks
-    limit_val = _extract_limit_value(tree)
-    if limit_val is None:
-        return False, {"reason": "missing_limit"}
-    if limit_val > max_limit:
-        return False, {
-            "reason": "limit_exceeds_max",
-            "limit": limit_val,
-            "max": max_limit,
-        }
+    # 3) single-statement quick check (avoid "select ...; drop table ...")
+    # if there is more than one ';' it's safer to drop it
+    if s.count(";") > 1:
+        return False, {"reason": "multiple_statements"}
 
-    # Optional: validate columns if allowed_columns provided
-    columns = _extract_column_names(tree)
-    if allowed_columns is not None:
-        bad_cols = {c for c in columns if c not in allowed_columns}
-        if bad_cols:
-            return False, {"reason": "forbidden_columns", "columns": list(bad_cols)}
-
-    # All checks passed
-    return True, {
-        "tables": list(tables),
-        "limit": limit_val,
-        "columns": list(columns),
-    }
-
+    # if we got here, we accept
+    return True, {"reason": "ok"}

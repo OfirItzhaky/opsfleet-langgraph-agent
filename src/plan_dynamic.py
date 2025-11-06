@@ -90,21 +90,25 @@ def dynamic_plan(state: AgentState) -> AgentState:
     # ------------------------------------------------------------------
     if mode == "sql":
         raw_sql = (data.get("sql") or "").strip()
+        raw_sql = raw_sql.rstrip().rstrip(';')
 
-        # build allowed tables list from schema
-        allowed_tables = {name.lower() for name in TABLES.keys()}
+        raw_sql = (data.get("sql") or "").strip()
 
-        ok, info = validate_dynamic_sql(
-            raw_sql,
-            allowed_tables=allowed_tables,
-            max_limit=2000,
-        )
+        ok, info = validate_dynamic_sql(raw_sql)
         if not ok:
-            logger.warning("dynamic_plan: sql failed guardrails, falling back to trend", extra={
-                "reason": info.get("reason"),
-                "info": info,
+            # do NOT pretend we answered their actual query
+            state.template_id = "q_sales_trend"
+            state.params.update({
+                "start_date": "DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)",
+                "end_date": "CURRENT_DATE()",
+                "grain": "month",
+                "locked_template": True,
+                # 👇 this is the important part
+                "dynamic_guardrail_blocked": True,
+                "dynamic_guardrail_reason": info.get("reason"),
+                "dynamic_guardrail_pattern": info.get("pattern"),
             })
-            return _fallback_to_trend(state, days=30)
+            return state
 
         # success path
         state.template_id = "raw_sql"
@@ -127,7 +131,16 @@ def dynamic_plan(state: AgentState) -> AgentState:
     return _fallback_to_trend(state, days=30)
 
 
-def _fallback_to_trend(state: AgentState, days: int = 30) -> AgentState:
+def _fallback_to_trend(
+    state: AgentState,
+    days: int = 30,
+    guardrail_reason: str | None = None,
+    guardrail_pattern: str | None = None,
+) -> AgentState:
+    """
+    Generic fallback to the safe trend template.
+    Optionally include guardrail reason if called after SQL validation failure.
+    """
     state.template_id = "q_sales_trend"
     state.params.update({
         "start_date": f"DATE_SUB(CURRENT_DATE(), INTERVAL {days} DAY)",
@@ -135,7 +148,16 @@ def _fallback_to_trend(state: AgentState, days: int = 30) -> AgentState:
         "grain": "month",
         "locked_template": True,
     })
+
+    if guardrail_reason:
+        state.params.update({
+            "dynamic_guardrail_blocked": True,
+            "dynamic_guardrail_reason": guardrail_reason,
+            "dynamic_guardrail_pattern": guardrail_pattern,
+        })
+
     return state
+
 
 
 def _build_schema_summary() -> str:
