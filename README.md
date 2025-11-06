@@ -1,12 +1,28 @@
 # LangGraph E-commerce Analysis Agent
 
+### TL;DR — Quick Start
+1. `git clone <repo> && cd <repo>`  
+2. Copy `.env.example` → `.env`, add `GEMINI_API_KEY="your_key_here"`  
+3. `pip install -r requirements.txt`  
+4. Run: `python -m src.main` *(interactive)* or `python -m src.dev_run_scenarios` *(batch)*  
+5. In `src/config.py`, set model (e.g. `gemini-2.5-flash` or pro if api key usage permits) and `INTENT_MODE = "deterministic"` or `"dynamic"`  
+6. 📘 **See full architecture:** [docs/architecture.md](docs/architecture.md)
+**When to use each:**
+- Use **deterministic mode** for standard analytic questions (“top products”, “sales by country”, “monthly trend”).
+- Use **dynamic mode** for more open or composite requests that cross categories or logic (“show men’s outerwear sales in US and Canada”, “compare churn between new and returning users”).
+
+
 ## Overview
 This project implements a **CLI-based LangGraph agent** that analyzes the public e-commerce dataset **`bigquery-public-data.thelook_ecommerce`** and returns **business-grade insights**.  
 The agent turns a free-form question like:
 
 > “which countries bought the most last month?”
 
-into a deterministic pipeline:
+into a structured LangGraph pipeline that can run in two modes:
+
+- **Deterministic mode:** safe SQL templates with fixed parameters.  
+- **Dynamic mode:** LLM-generated SQL (Gemini JSON plan with guardrails).
+
 
 1. understand the intent (geo / product / trend / segment),
 2. pick a safe SQL template,
@@ -36,7 +52,7 @@ The goal is to show *agentic structure* (LangGraph), *safe data access* (templat
 ## Architecture (high level)
 The agent is built as a **deterministic LangGraph**:
 
-For a visual overview of the architecture, see [`docs/architecture.md`](docs/architecture.md) or open `docs/architecture.png`._
+For a visual overview of the architecture, see [`docs/architecture.md`](docs/architecture.md)
 
 ```mermaid
 flowchart TD
@@ -48,6 +64,22 @@ flowchart TD
     F --> G[insight_node (Gemini)]
     G --> H[respond_node]
 ```
+### Planning modes (deterministic vs dynamic)
+
+The agent now supports **two planning strategies**, controlled at runtime (e.g. via `INTENT_MODE` in `config.py`):
+
+1. **Deterministic (template-based)**  
+   - intent → known template (`q_top_products`, `q_geo_sales`, `q_sales_trend`, `q_customer_segments`)  
+   - safe, bounded SQL rendered from `src/sql_templates.py`  
+   - best for common reporting questions and for the original assignment requirements.
+
+2. **Dynamic (LLM-generated SQL)**  
+   - intent → `dynamic_plan(...)` → Gemini returns a JSON plan with `mode: "sql"` and a full SELECT  
+   - we run guardrails (must have `LIMIT`, must reference the 4 allowed tables, no DML)  
+   - if OK → we set `template_id="raw_sql"` and pass the SQL forward  
+   - if NOT OK → we fall back to the deterministic trend template (`q_sales_trend`) and mark `locked_template=true`.
+
+The rest of the graph (**sqlgen → exec → results → insight → respond**) stays the same in both modes. The only difference is **how** the SQL is decided in `plan_node`.
 
 **Node roles:**
 
@@ -118,7 +150,7 @@ A small **schema registry** is hardcoded in `src/schema.py` to describe these ta
    This sets up **ADC (Application Default Credentials)** which the BigQuery client in `src/bq.py` will use.
 3. **Gemini API key** (used in intent / plan / insight nodes):
     
-    use the .end.example file with an the googla api key (flash/pro) and save as .env
+    → use the .env.example file with your Google API key and save as .env
 
 ---
 
@@ -199,12 +231,15 @@ Key things you can control:
 
 1. **User input** → new `AgentState` is created.
 2. **intent_node** → Gemini classifies into 4 intents.
-3. **plan_node** → selects SQL template + params.
-4. **sqlgen_node** → renders SQL safely.
+3. **plan_node** → either:
+   - pick a deterministic SQL template + params, or
+   - call the dynamic planner (Gemini) to get guarded raw SQL (with fallback to trend).
+4. **sqlgen_node** → if we have a template, render it; if we already have `raw_sql`, just pass it through.
 5. **exec_node** → runs BigQuery and returns preview.
 6. **results_node** → computes aggregates (totals, shares).
 7. **insight_node** → Gemini transforms data into insights/actions/follow-ups.
 8. **respond_node** → prints CLI text.
+
 
 ---
 
@@ -239,11 +274,18 @@ Typical tests:
 ---
 
 ## Performance Notes
+Users or tests can switch between deterministic and dynamic planning by setting `INTENT_MODE` in `src/config.py`.
 
-From benchmark runs (~40s per full scenario):
-- ~80% time in LLM calls (plan + insight)
-- BigQuery queries are lightweight due to date filters & LIMIT
-- Architecture prioritizes correctness and explainability
+It also:
+- understands “last N days” and adjusts the date window,
+- detects YOY / “last year” wording and switches trend to a longer window,
+- can tag the “Outerwear & Coats” family if those words appear.
+
+- Planning now has 2 costs:
+  - deterministic plan is fast (pure Python rules);
+  - dynamic plan calls Gemini once and adds ~10–15s in our runs.
+- Dynamic is useful for “hard” queries (multi-filters, churnish logic), but we still keep a deterministic fallback (`q_sales_trend`) so the flow never breaks.
+- Exec + results + insight timing stays the same for both modes.
 
 ---
 
@@ -267,7 +309,7 @@ From benchmark runs (~40s per full scenario):
 6. Add more tools the agent cal call using functions not just SQL for complex predictions
  ### And also:
 7. Add more tests to improve coverage
-8. Add component testing for quality and enhance and optimize keywords in config fore more flexibilty in intent node keeping deterministic but flexible UX
+8. Add component tests and optimize config keywords for more flexibility.
 
 ---
 
