@@ -117,13 +117,8 @@ A small **schema registry** is hardcoded in `src/schema.py` to describe these ta
    ```
    This sets up **ADC (Application Default Credentials)** which the BigQuery client in `src/bq.py` will use.
 3. **Gemini API key** (used in intent / plan / insight nodes):
-   ```bash
-   export GEMINI_API_KEY="YOUR_KEY_HERE"
-   ```
-   or on Windows:
-   ```powershell
-   setx GEMINI_API_KEY "YOUR_KEY_HERE"
-   ```
+    
+    use the .end.example file with an the googla api key (flash/pro) and save as .env
 
 ---
 

@@ -24,6 +24,36 @@ def _normalize_date(val: Optional[str]) -> Optional[str]:
     if val is None:
         return None
     return val.strip()
+import re
+
+def _normalize_dynamic_sql(sql: str) -> str:
+    fixed = sql
+
+    # 1) TIMESTAMP vs DATE for "last N days"
+    fixed = re.sub(
+        r"(\w+)\.created_at\s*>=\s*DATE_SUB\(CURRENT_DATE\(\),\s*INTERVAL\s+(\d+)\s+DAY\)",
+        r"DATE(\1.created_at) >= DATE_SUB(CURRENT_DATE(), INTERVAL \2 DAY)",
+        fixed,
+        flags=re.IGNORECASE,
+    )
+
+    # 2) TIMESTAMP vs DATE for "last month" window
+    fixed = re.sub(
+        r"(\w+)\.created_at\s*>=\s*DATE_TRUNC\(DATE_SUB\(CURRENT_DATE\(\),\s*INTERVAL\s+1\s+MONTH\),\s*MONTH\)",
+        r"DATE(\1.created_at) >= DATE_TRUNC(DATE_SUB(CURRENT_DATE(), INTERVAL 1 MONTH), MONTH)",
+        fixed,
+        flags=re.IGNORECASE,
+    )
+    fixed = re.sub(
+        r"(\w+)\.created_at\s*<\s*DATE_TRUNC\(CURRENT_DATE\(\),\s*MONTH\)",
+        r"DATE(\1.created_at) < DATE_TRUNC(CURRENT_DATE(), MONTH)",
+        fixed,
+        flags=re.IGNORECASE,
+    )
+
+    return fixed
+
+
 
 def sqlgen_node(state: AgentState) -> AgentState:
     """
@@ -52,8 +82,9 @@ def sqlgen_node(state: AgentState) -> AgentState:
             "node": "sqlgen",
             "sql_length": len(raw_sql),
         })
-        state.sql = raw_sql
-        state.last_sql = raw_sql
+        fixed_sql = _normalize_dynamic_sql(raw_sql)
+        state.sql = fixed_sql
+        state.last_sql = fixed_sql
         state.params["sqlgen_status"] = "ok"
         return state
 
