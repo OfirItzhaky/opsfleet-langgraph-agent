@@ -1,4 +1,4 @@
-# LangGraph E-commerce Analysis Agent (Opsfleet Assignment)
+# LangGraph E-commerce Analysis Agent
 
 ## Overview
 This project implements a **CLI-based LangGraph agent** that analyzes the public e-commerce dataset **`bigquery-public-data.thelook_ecommerce`** and returns **business-grade insights**.  
