@@ -288,6 +288,21 @@ It also:
 - Exec + results + insight timing stays the same for both modes.
 
 ---
+## Security Considerations
+
+This project has two planning modes:
+
+- **Deterministic** → SQL comes from fixed templates → low risk.
+- **Dynamic** → SQL comes from an LLM → treated as untrusted.
+
+For dynamic mode we added:
+1. parser-based validation (sqlglot) before execution,
+2. table whitelist (`orders`, `order_items`, `products`, `users`),
+3. required `LIMIT` with max,
+4. DML blacklist,
+5. deterministic fallback (`q_sales_trend`) on any violation.
+
+In other words: dynamic ≠ free-form SQL.
 
 ## Design Decisions / Highlights
 
@@ -299,14 +314,15 @@ It also:
 - Logs include Cost logged for each call it uses the LLM
 ---
 
+
 ## Next Improvements
 
 1. Expand intent classification beyond 4 basic types.
 2. Add smarter parameter extraction from user text (e.g. "last quarter", "US vs Canada").
 3. Merge plan + insight for trivial queries to reduce cost/time.
-4. Add more templates for RFM & cohort analysis.
-5. use cached memory to not call llm and related to cross quries inthe same chat more efficiently
-6. Add more tools the agent cal call using functions not just SQL for complex predictions
+4. Add more templates for Refine & cohort analysis.
+5. use caching/memory to avoid repeated LLM calls across related queries.
+6. Add more tools the agent cal call using functions not just SQL for complex predictions.
  ### And also:
 7. Add more tests to improve coverage
 8. Add component tests and optimize config keywords for more flexibility.
