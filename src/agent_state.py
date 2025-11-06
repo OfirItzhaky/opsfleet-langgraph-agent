@@ -22,6 +22,7 @@ class AgentState(BaseModel):
 
     # Execution phase
     last_sql: Optional[str] = Field(None, description="Rendered SQL text")
+    sql: Optional[str] = Field(None, description="Raw/dynamic SQL text")
     dry_run_bytes: Optional[int] = Field(None, description="BigQuery dry-run estimate")
     last_results: Optional[List[Dict[str, Any]]] = Field(default_factory=list, description="Preview rows")
 

@@ -8,10 +8,10 @@ load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID") or None
 GEMINI_MODEL = "gemini-2.5-flash"
-# Can use gemini-2.5-pro assuming API KEY with usage allowance
+# Can use gemini-2.5-pro assuming API KEY with usage allowance or flash for free one after creating one
 
 # Setting for either determinsitic node or dynamic using llm
-INTENT_MODE  = "Deterministic"
+INTENT_MODE  = "Dynamic"
 
 # Dynamic  - choose to use llm in the intent
 

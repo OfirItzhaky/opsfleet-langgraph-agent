@@ -37,6 +37,7 @@ def dynamic_plan(state: AgentState) -> AgentState:
     llm = ChatGoogleGenerativeAI(
         model=GEMINI_MODEL,
         google_api_key=GEMINI_API_KEY,
+        temperature=0.0,
     )
     resp = llm.invoke(prompt)
     text = extract_text(resp)
@@ -45,8 +46,7 @@ def dynamic_plan(state: AgentState) -> AgentState:
     try:
         data = json.loads(text_clean)
     except Exception as e:
-        # fallback to deterministic-ish trend
-        logger.error("dynamic_plan: bad JSON from LLM, fallback", extra={
+        logger.error("dynamic_plan: bad JSON from LLM, fallback to trend", extra={
             "error": str(e),
             "response_preview": text_clean[:200],
         })
@@ -59,53 +59,39 @@ def dynamic_plan(state: AgentState) -> AgentState:
         })
         return state
 
-    mode = data.get("mode", "template")
+    if data.get("mode") == "none":
+        # graceful fail
+        state.template_id = "q_sales_trend"
+        state.params.update({
+            "start_date": "DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)",
+            "end_date": "CURRENT_DATE()",
+            "grain": "month",
+            "locked_template": True,
+        })
+        return state
 
-    if mode == "sql":
-        raw_sql = data.get("sql", "").strip()
-        # 🔒 validate SQL here before execution
-        if not _sql_passes_guardrails(raw_sql):
-            # if LLM’s SQL is unsafe, fall back
-            logger.warning("dynamic_plan: sql failed guardrails, falling back to trend")
-            state.template_id = "q_sales_trend"
-            state.params.update({
-                "start_date": "DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)",
-                "end_date": "CURRENT_DATE()",
-                "grain": "month",
-                "locked_template": True,
-            })
-            return state
+    raw_sql = (data.get("sql") or "").strip()
+    if not _sql_passes_guardrails(raw_sql):
+        logger.warning("dynamic_plan: sql failed guardrails, falling back to trend")
+        state.template_id = "q_sales_trend"
+        state.params.update({
+            "start_date": "DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)",
+            "end_date": "CURRENT_DATE()",
+            "grain": "month",
+            "locked_template": True,
+        })
+        return state
 
-        # if OK, stash it on state so sqlgen/exec can use it directly
-        state.template_id = "raw_sql"
-        state.params["raw_sql"] = raw_sql
-        state.params["locked_template"] = True
-
-    else:
-        # template path (same as before)
-        template_id = data.get("template_id", "q_sales_trend")
-        if template_id not in ALLOWED_TEMPLATES:
-            template_id = "q_sales_trend"
-
-        incoming = data.get("params") or {}
-        safe_params = {}
-        for k, v in incoming.items():
-            if k in ALLOWED_PARAM_KEYS:
-                safe_params[k] = v
-
-        safe_params.setdefault("start_date", "DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)")
-        safe_params.setdefault("end_date", "CURRENT_DATE()")
-        safe_params["locked_template"] = True
-
-        state.template_id = template_id
-        state.params.update(safe_params)
+    # ✅ the only success path in dynamic mode
+    state.template_id = "raw_sql"
+    state.params["raw_sql"] = raw_sql
+    state.params["locked_template"] = True
 
     duration_ms = (time.time() - start) * 1000
     logger.info("dynamic_plan completed", extra={
         "node": "plan_dynamic",
         "duration_ms": round(duration_ms, 2),
-        "mode": mode,
-        "template_id": state.template_id,
+        "mode": "sql",
     })
     return state
 
