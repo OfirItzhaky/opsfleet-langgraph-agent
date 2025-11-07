@@ -7,11 +7,11 @@ load_dotenv()
 # Public config values your code will import
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID") or None
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = "gemini-2.5-pro"
 # Can use gemini-2.5-pro assuming API KEY with usage allowance or flash for free one after creating one
 
 # Setting for either determinsitic node or dynamic using llm
-INTENT_MODE  = "Dynamic"
+INTENT_MODE  = "dynamic"
 
 # Dynamic  - choose to use llm in the intent
 
@@ -28,6 +28,40 @@ MODEL_PRICING = {
         "output": 5.00,   # $5.00 per 1M output tokens
     },
 }
+
+
+# simple keyword families so we can expand later
+CATEGORY_KEYWORDS = {
+    "Outerwear & Coats": ["outerwear", "coat", "coats", "jackets", "parka"],
+}
+
+SEASONALITY_KEYWORDS = [
+    "last year",
+    "previous year",
+    "seasonality",
+    "seasonal pattern",
+    "compare to last year",
+    "year over year",
+    "yoy",
+]
+
+### NEW: extra keyword families ###
+DEPARTMENT_KEYWORDS = {
+    "Men": ["men", "men's", "male"],
+    "Women": ["women", "women's", "female"],
+    "Kids": ["kids", "kid", "children", "child"],
+}
+
+COUNTRY_KEYWORDS = {
+    "United States": ["united states", "us", "usa", "america"],
+    "Canada": ["canada"],
+    "United Kingdom": ["uk", "britain", "england"],
+    "France": ["france"],
+    "Germany": ["germany"],
+}
+
+
+
 
 def calculate_llm_cost(
     model: str,

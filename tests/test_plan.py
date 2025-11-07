@@ -6,7 +6,7 @@ from src.utils.sql_guardrails import validate_dynamic_sql
 
 # try to import defaults from the deterministic module if you split it
 try:
-    from src.plan_deterministic import DEFAULT_START, DEFAULT_END
+    from src.plan_deterministic import DEFAULT_START, DEFAULT_END, deterministic_plan
 except ImportError:
     raise
 
@@ -207,12 +207,38 @@ def test_sql_guardrails_accepts_valid_query():
     assert "reason" in info
     assert info["reason"] == "ok"
 
+from src.plan_deterministic import deterministic_plan
+from src.agent_state import AgentState
+
+def make_state(query, intent="trend"):
+    return AgentState(user_query=query, intent=intent)
+
+def test_detect_department_and_country_and_quarter():
+    s = make_state("show men's outerwear sales in US and Canada last quarter", intent="geo")
+    out = deterministic_plan(s)
+    p = out.params
+    assert p["department"] == "Men"
+    assert "United States" in p["countries"]
+    assert "Canada" in p["countries"]
+    assert "DATE_SUB" in p["start_date"]
+    assert p["plan_confidence"].startswith("deterministic")
+
+def test_detect_short_window_daily_grain():
+    s = make_state("sales trend past 10 days")
+    out = deterministic_plan(s)
+    assert out.params.get("grain") == "day"
+
+def test_detect_last_year_and_this_month():
+    s1 = make_state("outerwear sales last year")
+    s2 = make_state("sales this month")
+    out1, out2 = deterministic_plan(s1), deterministic_plan(s2)
+    assert "365" in out1.params["start_date"]
+    assert "DATE_TRUNC" in out2.params["start_date"]
 
 
 
 
 def test_sql_guardrails_rejects_missing_limit():
-    from src.utils.sql_guardrails import validate_dynamic_sql
 
     sql = "SELECT * FROM orders"
     ok, info = validate_dynamic_sql(sql)

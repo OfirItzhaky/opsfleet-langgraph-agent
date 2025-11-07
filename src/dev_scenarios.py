@@ -65,4 +65,29 @@ DEV_SCENARIOS = [
         "query": "show me monthly sales for all categories and regions, highlight seasonality, and include last year for comparison",
         "expect": {"intent": "trend", "min_insights": 3},
     },
+    {
+        "id": "p1_geo_multi_country_this_month",
+        "query": "show geo sales for the US and France this month",
+        "expect": {
+            "intent": "geo",
+            "min_insights": 3,
+        },
+    },
+    {
+        "id": "p1_top_mens_outerwear_last_quarter",
+        "query": "top men's outerwear products from the last quarter",
+        "expect": {
+            "intent": "product",
+            "min_insights": 3,
+        },
+    },
+    {
+        "id": "p1_trend_past_10_days",
+        "query": "show sales trend past 10 days",
+        "expect": {
+            "intent": "trend",
+            "min_insights": 2,
+        },
+    },
+
 ]

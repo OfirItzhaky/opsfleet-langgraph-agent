@@ -264,6 +264,23 @@ Typical tests:
 - node execution path correctness
 - safe defaults and validation
 
+## ✅ Benchmark & Comparative Testing
+
+To validate the agent’s behavior across planning modes, we ran a **10-scenario benchmark suite** covering all major question types:
+
+- product performance  
+- geographic sales  
+- customer segmentation  
+- sales trends  
+
+Each scenario was executed **three ways**:
+
+| Mode                       | Model              | Overall Satisfaction (Results Summary)                                       |
+|----------------------------|--------------------|------------------------------------------------------------------------------|
+| **Deterministic (templates)** | —                  | ✅ Fast, safe, and consistent. Excellent for standard queries but limited coverage and flexibility. |
+| **Dynamic (Gemini 2.5 Flash)** | `gemini-2.5-flash` | ⚙️ Good accuracy and speed. Occasionally mismatched fields or date filters but solid overall. |
+| **Dynamic (Gemini 2.5 Pro)**   | `gemini-2.5-pro`   | 💡 Richest insights and best narrative quality, but higher latency and ~10× higher cost with modest accuracy gains. |
+
 ---
 
 ## Error Handling & Fallbacks
