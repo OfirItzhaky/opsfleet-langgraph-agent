@@ -264,7 +264,20 @@ Typical tests:
 - node execution path correctness
 - safe defaults and validation
 
-## ✅ Benchmark & Comparative Testing
+#
+## Error Handling & Fallbacks
+
+- **BigQuery errors** → handled with try/except to avoid crashes and print friendly messages.
+- **LLM failures** → partial data can still flow to response node.
+- **SQL guardrails** →
+  - deterministic path: queries are built from templates;
+  - dynamic path: LLM SQL is checked for obviously malicious patterns and otherwise we alert the user for suspicious query.
+
+---
+
+## Performance Notes
+Users or tests can switch between deterministic and dynamic planning by setting `INTENT_MODE` in `src/config.py`.
+# ✅ Benchmark & Comparative Testing
 
 To validate the agent’s behavior across planning modes, we ran a **10-scenario benchmark suite** covering all major question types:
 
@@ -280,32 +293,6 @@ Each scenario was executed **three ways**:
 | **Deterministic (templates)** | —                  | ✅ Fast, safe, and consistent. Excellent for standard queries but limited coverage and flexibility. |
 | **Dynamic (Gemini 2.5 Flash)** | `gemini-2.5-flash` | ⚙️ Good accuracy and speed. Occasionally mismatched fields or date filters but solid overall. |
 | **Dynamic (Gemini 2.5 Pro)**   | `gemini-2.5-pro`   | 💡 Richest insights and best narrative quality, but higher latency and ~10× higher cost with modest accuracy gains. |
-
----
-
-## Error Handling & Fallbacks
-
-- **BigQuery errors** → handled with try/except to avoid crashes and print friendly messages.
-- **LLM failures** → partial data can still flow to response node.
-- **SQL guardrails** →
-  - deterministic path: queries are built from templates;
-  - dynamic path: LLM SQL is checked for obviously malicious patterns and otherwise we alert the user for suspicious query.
-
----
-
-## Performance Notes
-Users or tests can switch between deterministic and dynamic planning by setting `INTENT_MODE` in `src/config.py`.
-
-It also:
-- understands “last N days” and adjusts the date window,
-- detects YOY / “last year” wording and switches trend to a longer window,
-- can tag the “Outerwear & Coats” family if those words appear.
-
-- Planning now has 2 costs:
-  - deterministic plan is fast (pure Python rules);
-  - dynamic plan calls Gemini once and adds ~10–15s in our runs.
-- Dynamic is useful for “hard” queries (multi-filters, churnish logic), but we still keep a deterministic fallback (`q_sales_trend`) so the flow never breaks.
-- Exec + results + insight timing stays the same for both modes.
 
 ---
 ### Security Considerations

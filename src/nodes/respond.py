@@ -1,4 +1,3 @@
-# src/nodes/respond.py
 from typing import List
 import time
 
