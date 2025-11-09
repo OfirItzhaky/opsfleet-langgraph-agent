@@ -1,5 +1,5 @@
 """
-Enhanced logging setup for Opsfleet LangGraph Agent.
+Enhanced logging setup for LangGraph Agent.
 
 Supports:
 - Dual output: human-readable console + structured JSON

@@ -1,5 +1,5 @@
 """
-Agent state model for the Opsfleet LangGraph agent.
+Agent state model for the LangGraph agent.
 Holds shared context as nodes pass data between them.
 """
 

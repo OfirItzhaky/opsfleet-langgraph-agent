@@ -10,7 +10,7 @@ def run_cli() -> None:
     graph = build_graph()
 
     logger.info("CLI started", extra={"mode": "interactive"})
-    print("\n=== Opsfleet Data Agent (thelook_ecommerce) ===")
+    print("\n=== Data Agent (thelook_ecommerce) ===")
     print("Type 'exit' to quit at any time.\n")
 
     # --- friendly intro for first run ---
